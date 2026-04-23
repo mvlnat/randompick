@@ -58,7 +58,7 @@ function exportNodeToSwift(node) {
     title: node.title,
   };
 
-  if (node.kind === "list") {
+  if (node.kind === "list" || node.children.length > 0) {
     return {
       ...base,
       children: node.children.map(exportNodeToSwift),
@@ -98,6 +98,21 @@ function getChildrenCollection(tree, parentId) {
   }
 
   return parent.children;
+}
+
+function ensureListNode(node) {
+  if (node.kind !== "list") {
+    node.kind = "list";
+    node.isExpanded = true;
+    node.children = [];
+    return node.children;
+  }
+
+  if (!Array.isArray(node.children)) {
+    node.children = [];
+  }
+
+  return node.children;
 }
 
 function computeDeleteFallback(tree, parentId, index) {
@@ -217,7 +232,7 @@ export function flattenVisibleTree(tree, depth = 0, parentId = null) {
 
   for (const node of tree) {
     rows.push({ node, depth, parentId });
-    if (node.kind === "list" && node.isExpanded && node.children.length > 0) {
+    if (node.isExpanded && node.children.length > 0) {
       rows.push(...flattenVisibleTree(node.children, depth + 1, node.id));
     }
   }
@@ -245,7 +260,7 @@ export function updateNodeTitle(tree, nodeId, title) {
 
 export function toggleNodeExpanded(tree, nodeId) {
   return updateNode(tree, nodeId, (node) => {
-    if (node.kind === "list") {
+    if (node.kind === "list" || node.children.length > 0) {
       node.isExpanded = !node.isExpanded;
     }
   });
@@ -263,13 +278,7 @@ export function addChildNode(tree, parentId, node) {
     return nextTree;
   }
 
-  if (parent.kind !== "list") {
-    parent.kind = "list";
-    parent.isExpanded = true;
-    parent.children = [];
-  }
-
-  parent.children.push(normalizeNode(node));
+  ensureListNode(parent).push(normalizeNode(node));
   parent.isExpanded = true;
   return nextTree;
 }
@@ -313,7 +322,17 @@ export function moveNodeToParent(tree, dragId, parentId, index) {
   }
 
   const [dragNode] = dragLocation.collection.splice(dragLocation.index, 1);
-  const targetCollection = getChildrenCollection(nextTree, parentId);
+  let targetCollection = null;
+
+  if (parentId === null) {
+    targetCollection = nextTree;
+  } else {
+    const parent = findNode(nextTree, parentId);
+    if (parent) {
+      targetCollection = ensureListNode(parent);
+      parent.isExpanded = true;
+    }
+  }
 
   if (!targetCollection) {
     dragLocation.collection.splice(dragLocation.index, 0, dragNode);
@@ -324,11 +343,6 @@ export function moveNodeToParent(tree, dragId, parentId, index) {
   const adjustedIndex = sameCollection && dragLocation.index < index ? index - 1 : index;
   const safeIndex = Math.max(0, Math.min(adjustedIndex, targetCollection.length));
   targetCollection.splice(safeIndex, 0, dragNode);
-
-  const parent = parentId ? findNode(nextTree, parentId) : null;
-  if (parent?.kind === "list") {
-    parent.isExpanded = true;
-  }
 
   return nextTree;
 }
@@ -348,10 +362,6 @@ export function moveNodeRelative(tree, dragId, targetId, position) {
   }
 
   if (position === "inside") {
-    if (targetLocation.node.kind !== "list") {
-      return cloneTree(tree);
-    }
-
     return moveNodeToParent(tree, dragId, targetId, targetLocation.node.children.length);
   }
 
@@ -360,15 +370,14 @@ export function moveNodeRelative(tree, dragId, targetId, position) {
 }
 
 export function moveNodeToContainerEnd(tree, dragId, parentId) {
-  const targetCollection = getChildrenCollection(tree, parentId);
-  if (!targetCollection) {
-    return cloneTree(tree);
+  if (parentId === null) {
+    return moveNodeToParent(tree, dragId, null, tree.length);
   }
 
-  return moveNodeToParent(tree, dragId, parentId, targetCollection.length);
+  const parent = findNode(tree, parentId);
+  return moveNodeToParent(tree, dragId, parentId, parent?.children.length ?? 0);
 }
 
 export function mergeTrees(existingTree, importedTree) {
   return [...cloneTree(existingTree), ...cloneTree(importedTree)];
 }
-

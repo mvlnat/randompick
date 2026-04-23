@@ -10,40 +10,92 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const defaultPublicRoot = path.join(__dirname, "public");
 const defaultSharedRoot = path.join(projectRoot, "shared");
+const defaultVendorRoot = path.join(projectRoot, "node_modules");
+const maxRequestBytes = 5_000_000;
+
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.name = "HttpError";
+    this.statusCode = statusCode;
+  }
+}
+
+function baseHeaders(extraHeaders = {}) {
+  return {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "base-uri 'none'",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "img-src 'self' data:",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+    ].join("; "),
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    ...extraHeaders,
+  };
+}
 
 function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload);
-  response.writeHead(statusCode, {
+  response.writeHead(statusCode, baseHeaders({
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
-    "Cache-Control": "no-store",
-  });
+  }));
   response.end(body);
 }
 
 function sendText(response, statusCode, body, contentType) {
-  response.writeHead(statusCode, {
+  response.writeHead(statusCode, baseHeaders({
     "Content-Type": contentType,
     "Content-Length": Buffer.byteLength(body),
-    "Cache-Control": "no-store",
-  });
+  }));
   response.end(body);
 }
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks = [];
+    let totalBytes = 0;
+    let settled = false;
 
-    request.setEncoding("utf8");
-    request.on("data", (chunk) => {
-      body += chunk;
+    function finish(callback) {
+      return (...args) => {
+        if (settled) {
+          return;
+        }
 
-      if (body.length > 5_000_000) {
-        reject(new Error("Request body too large."));
+        settled = true;
+        callback(...args);
+      };
+    }
+
+    const onData = (chunk) => {
+      totalBytes += chunk.length;
+
+      if (totalBytes > maxRequestBytes) {
+        request.off("data", onData);
+        request.resume();
+        finish(reject)(new HttpError(413, "Request body too large."));
+        return;
       }
-    });
-    request.on("end", () => resolve(body));
-    request.on("error", reject);
+
+      chunks.push(chunk);
+    };
+
+    request.on("data", onData);
+    request.on("end", finish(() => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    }));
+    request.on("error", finish(reject));
   });
 }
 
@@ -52,7 +104,11 @@ function parseJsonBody(body) {
     return null;
   }
 
-  return JSON.parse(body);
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new HttpError(400, "Invalid JSON body.");
+  }
 }
 
 function getContentType(filePath) {
@@ -77,15 +133,34 @@ function getContentType(filePath) {
 function serveFile(response, filePath) {
   try {
     const body = fs.readFileSync(filePath);
-    response.writeHead(200, {
+    response.writeHead(200, baseHeaders({
       "Content-Type": getContentType(filePath),
       "Content-Length": body.length,
       "Cache-Control": filePath.endsWith(".html") ? "no-store" : "public, max-age=3600",
-    });
+    }));
     response.end(body);
   } catch {
     sendJson(response, 404, { error: "Not found" });
   }
+}
+
+function decodePathname(pathname) {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    throw new HttpError(400, "Invalid path.");
+  }
+}
+
+function resolveWithinRoot(root, requestedPath) {
+  const resolved = path.resolve(root, requestedPath.replace(/^\/+/, ""));
+  const relative = path.relative(root, resolved);
+
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+
+  return resolved;
 }
 
 async function handleApi(store, request, response, url) {
@@ -154,6 +229,7 @@ export function createAppServer({
   store,
   publicRoot = defaultPublicRoot,
   sharedRoot = defaultSharedRoot,
+  vendorRoot = defaultVendorRoot,
 } = {}) {
   if (!store) {
     throw new Error("createAppServer requires a StateStore instance.");
@@ -169,20 +245,32 @@ export function createAppServer({
       }
 
       if (url.pathname.startsWith("/shared/")) {
-        const requested = path.normalize(url.pathname.replace(/^\/shared\//, ""));
-        if (requested.startsWith("..")) {
+        const requested = decodePathname(url.pathname.replace(/^\/shared\//, ""));
+        const filePath = resolveWithinRoot(sharedRoot, requested);
+        if (!filePath) {
           sendJson(response, 400, { error: "Invalid path" });
           return;
         }
 
-        serveFile(response, path.join(sharedRoot, requested));
+        serveFile(response, filePath);
         return;
       }
 
-      const requestedPath = url.pathname === "/" ? "/index.html" : url.pathname;
-      const filePath = path.join(publicRoot, path.normalize(requestedPath));
+      if (url.pathname === "/vendor/sortablejs.js") {
+        const filePath = resolveWithinRoot(vendorRoot, "sortablejs/modular/sortable.esm.js");
+        if (!filePath) {
+          sendJson(response, 404, { error: "Not found" });
+          return;
+        }
 
-      if (!filePath.startsWith(publicRoot)) {
+        serveFile(response, filePath);
+        return;
+      }
+
+      const requestedPath = url.pathname === "/" ? "/index.html" : decodePathname(url.pathname);
+      const filePath = resolveWithinRoot(publicRoot, requestedPath);
+
+      if (!filePath) {
         sendJson(response, 400, { error: "Invalid path" });
         return;
       }
@@ -194,8 +282,17 @@ export function createAppServer({
 
       serveFile(response, path.join(publicRoot, "index.html"));
     } catch (error) {
-      sendJson(response, 500, {
-        error: error instanceof Error ? error.message : "Unexpected server error",
+      const statusCode = error instanceof HttpError ? error.statusCode : 500;
+
+      if (statusCode >= 500) {
+        console.error("RandomPick request failed", error);
+      }
+
+      sendJson(response, statusCode, {
+        error:
+          statusCode >= 500
+            ? "Unexpected server error"
+            : (error instanceof Error ? error.message : "Request failed"),
       });
     }
   });

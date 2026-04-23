@@ -3,6 +3,9 @@ FROM node:25-alpine
 WORKDIR /app
 
 COPY package.json ./
+COPY package-lock.json ./
+RUN npm ci --omit=dev
+
 COPY backend ./backend
 COPY shared ./shared
 

@@ -48,7 +48,7 @@ test("deleteNode selects the next sibling when the selected node is removed", ()
   assert.equal(result.nextSelectedId, c.id);
 });
 
-test("moveNodeRelative nests into lists and rejects nesting into items", () => {
+test("moveNodeRelative nests into any node and promotes leaf targets", () => {
   const target = createNode({ title: "Target", kind: "list" });
   const drag = createNode({ title: "Drag", kind: "item" });
   const item = createNode({ title: "Leaf", kind: "item" });
@@ -57,8 +57,10 @@ test("moveNodeRelative nests into lists and rejects nesting into items", () => {
   const nestedTarget = findNode(nestedTree, target.id);
   assert.equal(nestedTarget.children[0].id, drag.id);
 
-  const rejectedTree = moveNodeRelative([item, drag], drag.id, item.id, "inside");
-  assert.equal(rejectedTree.length, 2);
+  const promotedTree = moveNodeRelative([item, drag], drag.id, item.id, "inside");
+  const promotedTarget = findNode(promotedTree, item.id);
+  assert.equal(promotedTarget.kind, "list");
+  assert.equal(promotedTarget.children[0].id, drag.id);
 });
 
 test("moveNodeToParent can move nested nodes back to root", () => {
@@ -85,4 +87,3 @@ test("exportToSwiftTree removes internal kind fields from items", () => {
     },
   ]);
 });
-
