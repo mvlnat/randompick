@@ -1,0 +1,127 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    server_tokens off;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    upstream backend {
+        server backend:8080;
+    }
+
+    upstream frontend {
+        server frontend:80;
+    }
+
+    upstream store {
+        server store-edge:80;
+    }
+
+    upstream randompick {
+        server randompick-edge:8080;
+    }
+
+    server {
+        listen 80 default_server;
+        server_name _;
+        return 444;
+    }
+
+    server {
+        listen 80;
+        server_name fsrs.ziyang.li;
+        return 301 https://fsrs.ziyang.li$request_uri;
+    }
+
+    server {
+        listen 80;
+        server_name store.ziyang.li;
+        return 301 https://store.ziyang.li$request_uri;
+    }
+
+    server {
+        listen 80;
+        server_name random.ziyang.li;
+        return 301 https://random.ziyang.li$request_uri;
+    }
+
+    server {
+        listen 443 ssl default_server;
+        server_name _;
+        http2 on;
+
+        ssl_certificate /etc/letsencrypt/live/fsrs.ziyang.li/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/fsrs.ziyang.li/privkey.pem;
+
+        return 421;
+    }
+
+    server {
+        listen 443 ssl;
+        server_name fsrs.ziyang.li;
+        http2 on;
+
+        ssl_certificate /etc/letsencrypt/live/fsrs.ziyang.li/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/fsrs.ziyang.li/privkey.pem;
+
+        location /api/ {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location / {
+            proxy_pass http://frontend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name store.ziyang.li;
+        http2 on;
+
+        ssl_certificate /etc/letsencrypt/live/store.ziyang.li/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/store.ziyang.li/privkey.pem;
+
+        location / {
+            proxy_pass http://store;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name random.ziyang.li;
+        http2 on;
+
+        ssl_certificate /etc/letsencrypt/live/random.ziyang.li/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/random.ziyang.li/privkey.pem;
+
+        auth_basic "RandomPick";
+        auth_basic_user_file /etc/nginx/.htpasswd-randompick;
+
+        location / {
+            proxy_pass http://randompick;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+
