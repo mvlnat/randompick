@@ -12,7 +12,7 @@ The product scope, deploy shape, and interaction model in the rest of this docum
 
 ## Overview
 
-This project converts the native SwiftUI `WhatToDo` app into a private web app deployed at `random.ziyang.li` on the existing Hetzner VM.
+This project converts the native SwiftUI `WhatToDo` app into a web app deployed at `random.ziyang.li` on the existing Hetzner VM.
 
 The web version should preserve the current product's core value:
 
@@ -75,7 +75,7 @@ Important existing quirks worth fixing in the web version:
 - Persistence: SQLite via a pure-Go driver
 - Deployment: single Docker container on the shared VM
 - Edge routing: existing `fsrs` nginx edge using the shared Docker network
-- Access control: nginx basic auth at the edge
+- Access control: none for now
 
 ## Why This Stack
 
@@ -85,7 +85,7 @@ This keeps consistency with the existing repos without inheriting their weight.
 - Go keeps backend deployment simple and familiar.
 - SQLite is sufficient because this is a private single-user tool with small data volume.
 - A single container is enough because the app does not need a separate frontend service, internal nginx, or Postgres.
-- Edge basic auth is simpler than building login, cookies, password reset, and user tables for a personal tool.
+- Avoiding app-level auth keeps the stack and edge config smaller.
 
 ## High-Level Architecture
 
@@ -429,13 +429,12 @@ The backend should not own application behavior like random picking or tree edit
 
 ## Security Model
 
-This is a private personal tool, so keep security proportional.
+This app is currently open access, so keep the edge setup simple.
 
 Recommended approach:
 
 - terminate TLS at the existing public nginx edge
-- add nginx basic auth for `random.ziyang.li`
-- keep the app private behind that gate
+- no edge auth gate
 - no in-app user table
 - no JWT/session flow
 
@@ -462,7 +461,6 @@ Update the existing shared edge nginx config on the VM:
 - add upstream for the new app on the `shared-edge` network
 - add HTTP to HTTPS redirect for `random.ziyang.li`
 - add HTTPS server block for `random.ziyang.li`
-- add `auth_basic`
 - proxy all traffic to the app container
 
 ### Runtime Stack
@@ -596,7 +594,7 @@ If rendering becomes noisy with larger trees:
 - Dockerfile
 - production compose
 - edge nginx route
-- TLS and basic auth
+- TLS
 - deploy script
 
 ### Phase 5: Polish
@@ -622,6 +620,6 @@ Build this as a small, single-user web app with:
 - SQLite whole-document persistence
 - `dnd-kit` for reorder and nesting
 - one Docker container
-- nginx basic auth at the shared edge
+- open access at the shared edge
 
 This preserves the current product well, matches the style of the existing web apps, and keeps the operational footprint appropriately small for `random.ziyang.li`.

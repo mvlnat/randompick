@@ -221,7 +221,7 @@ test \"\${ok}\" = 'yes'
 
   HTTP_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${DOMAIN}/")
   case "$HTTP_STATUS" in
-    2*|3*|401)
+    2*|3*)
       log "verified https://${DOMAIN}/ returned HTTP ${HTTP_STATUS}"
       ;;
     *)
