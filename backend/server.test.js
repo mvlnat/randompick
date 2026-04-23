@@ -116,6 +116,17 @@ test("server serves HTML with baseline security headers", async () => {
   });
 });
 
+test("server disables caching for app shell assets", async () => {
+  await withServer({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/app.js`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /console\.log\('ok'\)/);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  });
+});
+
 test("server exposes the local SortableJS vendor module", async () => {
   await withServer({}, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/vendor/sortablejs.js`);

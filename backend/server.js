@@ -136,7 +136,7 @@ function serveFile(response, filePath) {
     response.writeHead(200, baseHeaders({
       "Content-Type": getContentType(filePath),
       "Content-Length": body.length,
-      "Cache-Control": filePath.endsWith(".html") ? "no-store" : "public, max-age=3600",
+      "Cache-Control": "no-store",
     }));
     response.end(body);
   } catch {

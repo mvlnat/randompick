@@ -1,24 +1,25 @@
 :root {
-  --text-primary: #f2f5f8;
-  --text-secondary: #cdd4dc;
-  --text-tertiary: #95a0ad;
-  --bg-app: #0f1217;
-  --bg-panel: #151a21;
-  --bg-panel-solid: #151a21;
-  --bg-muted: #1b212a;
-  --bg-control: #1a2028;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --accent: #9dbdff;
-  --accent-soft: rgba(157, 189, 255, 0.16);
-  --danger: #c9372c;
-  --danger-soft: rgba(201, 55, 44, 0.16);
-  --warning: #915500;
-  --warning-soft: rgba(255, 159, 10, 0.18);
+  --text-primary: #f4ecde;
+  --text-secondary: #e2d4bd;
+  --text-tertiary: #a89980;
+  --bg-app: #12100d;
+  --bg-panel: #171411;
+  --bg-panel-solid: #171411;
+  --bg-muted: #201c17;
+  --bg-control: #1b1713;
+  --border: rgba(244, 236, 222, 0.11);
+  --border-strong: rgba(244, 236, 222, 0.22);
+  --accent: #d4b177;
+  --accent-soft: rgba(212, 177, 119, 0.16);
+  --danger: #e07b66;
+  --danger-soft: rgba(224, 123, 102, 0.14);
+  --warning: #ddb067;
+  --warning-soft: rgba(221, 176, 103, 0.14);
   --shadow-sm: none;
   --shadow-lg: none;
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-serif: Iowan Old Style, Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
   color-scheme: dark;
 }
 
@@ -34,7 +35,11 @@ body {
 body {
   margin: 0;
   font-family: var(--font-system);
-  background: var(--bg-app);
+  background-color: var(--bg-app);
+  background-image:
+    linear-gradient(rgba(244, 236, 222, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 236, 222, 0.025) 1px, transparent 1px);
+  background-size: 100% 32px, 32px 100%;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
@@ -52,7 +57,7 @@ select {
 }
 
 :where(button, input, select):focus-visible {
-  outline: 3px solid rgba(10, 132, 255, 0.35);
+  outline: 2px solid rgba(212, 177, 119, 0.52);
   outline-offset: 2px;
 }
 
@@ -84,7 +89,7 @@ select {
   gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--bg-panel);
   box-shadow: var(--shadow-sm);
 }
@@ -98,13 +103,19 @@ select {
   line-height: 1.1;
 }
 
+.brand-block h1 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+}
+
 .panel-label,
 .detail-path {
   margin: 0 0 2px;
   font-size: 11px;
   font-family: var(--font-mono);
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.04em;
   text-transform: none;
   color: var(--text-tertiary);
 }
@@ -121,18 +132,20 @@ select {
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   background: var(--bg-control);
   color: var(--text-primary);
+  font-size: 12px;
+  letter-spacing: 0.02em;
   transition: border-color 120ms ease, opacity 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .button:hover {
-  background: color-mix(in srgb, var(--bg-control) 88%, white 12%);
+  background: color-mix(in srgb, var(--bg-control) 92%, white 8%);
   border-color: var(--border-strong);
 }
 
@@ -142,16 +155,16 @@ select {
 }
 
 .button-primary {
-  background: #f3f6fa;
-  border-color: #f3f6fa;
-  color: #11161d;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #171411;
   box-shadow: none;
 }
 
 .button-primary:hover {
-  background: #ffffff;
-  border-color: #ffffff;
-  color: #0f1217;
+  background: #e0bc82;
+  border-color: #e0bc82;
+  color: #171411;
 }
 
 .button-ghost {
@@ -163,7 +176,7 @@ select {
   min-width: 72px;
   min-height: 28px;
   padding: 0 8px;
-  border-radius: 8px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -191,7 +204,7 @@ select {
   gap: 0;
   min-height: calc(100vh - 72px);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--bg-panel);
 }
@@ -227,6 +240,8 @@ select {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .panel-meta,
@@ -239,7 +254,7 @@ select {
 .banner {
   margin-top: 10px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid transparent;
   display: flex;
   justify-content: space-between;
@@ -284,17 +299,17 @@ select {
   min-height: 28px;
   padding: 1px 4px 1px calc(6px + var(--depth) * 12px);
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 4px;
   background: transparent;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
 .tree-row:hover {
-  background: color-mix(in srgb, var(--bg-muted) 76%, transparent);
+  background: color-mix(in srgb, var(--bg-muted) 86%, transparent);
 }
 
 .tree-row.is-selected {
-  background: color-mix(in srgb, var(--bg-muted) 88%, white 4%);
+  background: color-mix(in srgb, var(--bg-muted) 92%, white 2%);
   border-color: var(--border);
 }
 
@@ -336,7 +351,7 @@ select {
 .tree-toggle {
   width: 18px;
   height: 18px;
-  border-radius: 6px;
+  border-radius: 4px;
   color: var(--text-secondary);
 }
 
@@ -367,7 +382,7 @@ select {
 .icon-button {
   width: 20px;
   height: 20px;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   color: var(--text-tertiary);
 }
@@ -381,7 +396,7 @@ select {
 
 .tree-end-drop {
   min-height: 8px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .tree-end-drop.is-drop-before,
@@ -402,7 +417,7 @@ select {
   width: 100%;
   min-height: 34px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg-control);
   color: var(--text-primary);
@@ -410,7 +425,8 @@ select {
 
 .detail-title-input {
   max-width: 560px;
-  font-size: 26px;
+  font-family: var(--font-serif);
+  font-size: 28px;
   font-weight: 700;
   min-height: 38px;
   padding-inline: 0;
@@ -434,7 +450,9 @@ select {
 .detail-list {
   margin-top: 0;
   display: grid;
-  gap: 2px;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .detail-row {
@@ -443,15 +461,19 @@ select {
   gap: 6px;
   align-items: center;
   min-height: 30px;
-  padding: 2px 4px;
-  border-radius: 8px;
+  padding: 3px 4px;
+  border-radius: 0;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
 }
 
 .detail-row:hover {
-  background: color-mix(in srgb, var(--bg-muted) 72%, transparent);
-  border-color: var(--border);
+  background: color-mix(in srgb, var(--bg-muted) 82%, transparent);
 }
 
 .drag-handle {
@@ -460,7 +482,7 @@ select {
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 6px;
+  border-radius: 4px;
   border: none;
   background: none;
   padding: 0;
@@ -480,7 +502,7 @@ select {
 }
 
 .sortable-chosen {
-  background: color-mix(in srgb, var(--bg-muted) 82%, white 4%);
+  background: color-mix(in srgb, var(--bg-muted) 90%, white 2%);
 }
 
 .empty-state,
@@ -518,7 +540,7 @@ select {
 .modal-card {
   width: min(520px, 100%);
   padding: 18px;
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--bg-panel-solid);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
@@ -559,7 +581,7 @@ select {
   }
 
   .topbar {
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 8px;
   }
 
