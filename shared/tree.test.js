@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 
 import {
   addChildNode,
+  addRootNode,
   createNode,
   deleteNode,
   exportToSwiftTree,
   findNode,
+  mergeTrees,
   moveNodeRelative,
   moveNodeToParent,
   normalizeImportedTree,
+  validateInternalTree,
 } from "./tree.js";
 
 test("normalizeImportedTree keeps empty children arrays as lists", () => {
@@ -26,6 +29,72 @@ test("normalizeImportedTree keeps empty children arrays as lists", () => {
   assert.deepEqual(tree[0].children, []);
 });
 
+test("normalizeImportedTree regenerates duplicate node IDs", () => {
+  const tree = normalizeImportedTree([
+    {
+      id: "duplicate",
+      title: "Root",
+      isExpanded: true,
+      children: [
+        {
+          id: "duplicate",
+          title: "Child",
+        },
+      ],
+    },
+    {
+      id: "duplicate",
+      title: "Sibling",
+    },
+  ]);
+
+  assert.equal(tree[0].id, "duplicate");
+  assert.notEqual(tree[0].children[0].id, "duplicate");
+  assert.notEqual(tree[1].id, "duplicate");
+  assert.notEqual(tree[0].children[0].id, tree[1].id);
+});
+
+test("validateInternalTree rejects invalid explicit node kinds", () => {
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        kind: "folder",
+        isExpanded: true,
+        children: [],
+      },
+    ]),
+    /Node kind must be 'list' or 'item'\./,
+  );
+
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        kind: 42,
+        isExpanded: true,
+        children: [],
+      },
+    ]),
+    /Node kind must be 'list' or 'item'\./,
+  );
+});
+
+test("normalizeImportedTree rejects non-array children values", () => {
+  assert.throws(
+    () => normalizeImportedTree([
+      {
+        id: "bad",
+        title: "Bad",
+        children: {},
+      },
+    ]),
+    /Node children must be an array when present\./,
+  );
+});
+
 test("addChildNode promotes an item into a list", () => {
   const item = createNode({ title: "Leaf", kind: "item" });
   const child = createNode({ title: "Nested", kind: "item" });
@@ -35,6 +104,61 @@ test("addChildNode promotes an item into a list", () => {
   assert.ok(promoted);
   assert.equal(promoted.kind, "list");
   assert.equal(promoted.children.length, 1);
+});
+
+test("add helpers regenerate duplicate inserted node IDs", () => {
+  const existing = createNode({ title: "Existing", kind: "item" });
+
+  const rootTree = addRootNode([existing], {
+    id: existing.id,
+    title: "Duplicate Root",
+    kind: "item",
+  });
+  assert.equal(rootTree[0].id, existing.id);
+  assert.notEqual(rootTree[1].id, existing.id);
+
+  const childTree = addChildNode([existing], existing.id, {
+    id: existing.id,
+    title: "Duplicate Child",
+    kind: "item",
+  });
+  const promoted = findNode(childTree, existing.id);
+  assert.ok(promoted);
+  assert.notEqual(promoted.children[0].id, existing.id);
+});
+
+test("addChildNode preserves existing node IDs when inserted child collides with a later node", () => {
+  const parent = createNode({ title: "Parent", kind: "list" });
+  const later = createNode({ title: "Later", kind: "item" });
+
+  const tree = addChildNode([parent, later], parent.id, {
+    id: later.id,
+    title: "Child",
+    kind: "item",
+  });
+
+  const nextParent = findNode(tree, parent.id);
+  const nextLater = findNode(tree, later.id);
+
+  assert.ok(nextParent);
+  assert.ok(nextLater);
+  assert.notEqual(nextParent.children[0].id, later.id);
+});
+
+test("mergeTrees regenerates imported IDs that collide with existing IDs", () => {
+  const existing = createNode({ title: "Existing", kind: "item" });
+  const merged = mergeTrees([existing], [
+    {
+      id: existing.id,
+      title: "Imported",
+      kind: "item",
+      isExpanded: false,
+      children: [],
+    },
+  ]);
+
+  assert.equal(merged[0].id, existing.id);
+  assert.notEqual(merged[1].id, existing.id);
 });
 
 test("deleteNode selects the next sibling when the selected node is removed", () => {

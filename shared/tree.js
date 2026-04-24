@@ -1,5 +1,12 @@
 const VALID_KINDS = new Set(["list", "item"]);
 
+export class TreeValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TreeValidationError";
+  }
+}
+
 function generateId() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -21,34 +28,83 @@ function normalizeTitle(value) {
   return trimmed.length > 0 ? trimmed : "Untitled";
 }
 
-function normalizeNode(raw) {
-  if (!isObject(raw)) {
-    throw new Error("Each node must be an object.");
+function reserveNodeId(rawId, seenIds) {
+  if (typeof rawId === "string" && rawId.length > 0 && !seenIds.has(rawId)) {
+    seenIds.add(rawId);
+    return rawId;
   }
 
-  const explicitKind = VALID_KINDS.has(raw.kind) ? raw.kind : null;
+  let generatedId = generateId();
+  while (seenIds.has(generatedId)) {
+    generatedId = generateId();
+  }
+
+  seenIds.add(generatedId);
+  return generatedId;
+}
+
+function normalizeNode(raw, seenIds = new Set()) {
+  if (!isObject(raw)) {
+    throw new TreeValidationError("Each node must be an object.");
+  }
+
+  const hasExplicitKind = Object.hasOwn(raw, "kind");
+  const explicitKind = hasExplicitKind && typeof raw.kind === "string" ? raw.kind : null;
+  if (hasExplicitKind && !VALID_KINDS.has(explicitKind)) {
+    throw new TreeValidationError("Node kind must be 'list' or 'item'.");
+  }
+
   const hasChildren = Array.isArray(raw.children);
+  if (
+    Object.hasOwn(raw, "children")
+    && raw.children !== null
+    && raw.children !== undefined
+    && !hasChildren
+  ) {
+    throw new TreeValidationError("Node children must be an array when present.");
+  }
+
   const kind = explicitKind ?? (hasChildren ? "list" : "item");
 
-  if (!VALID_KINDS.has(kind)) {
-    throw new Error("Node kind must be 'list' or 'item'.");
-  }
-
+  const id = reserveNodeId(raw.id, seenIds);
   const children = kind === "list"
-    ? (hasChildren ? raw.children : []).map(normalizeNode)
+    ? (hasChildren ? raw.children : []).map((child) => normalizeNode(child, seenIds))
     : [];
 
   if (kind === "item" && hasChildren && raw.children.length > 0) {
-    throw new Error("Item nodes cannot contain children.");
+    throw new TreeValidationError("Item nodes cannot contain children.");
   }
 
   return {
-    id: typeof raw.id === "string" && raw.id.length > 0 ? raw.id : generateId(),
+    id,
     title: normalizeTitle(raw.title),
     kind,
     isExpanded: kind === "list" ? Boolean(raw.isExpanded) : false,
     children,
   };
+}
+
+function normalizeTree(rawTree, expectedMessage) {
+  if (!Array.isArray(rawTree)) {
+    throw new TreeValidationError(expectedMessage);
+  }
+
+  const seenIds = new Set();
+  return rawTree.map((node) => normalizeNode(node, seenIds));
+}
+
+function collectNodeIds(nodes, ids = new Set()) {
+  for (const node of nodes) {
+    if (typeof node?.id === "string" && node.id.length > 0) {
+      ids.add(node.id);
+    }
+
+    if (Array.isArray(node?.children)) {
+      collectNodeIds(node.children, ids);
+    }
+  }
+
+  return ids;
 }
 
 function exportNodeToSwift(node) {
@@ -148,11 +204,7 @@ export function createNode({ title = "", kind = "item" } = {}) {
 }
 
 export function normalizeImportedTree(rawTree) {
-  if (!Array.isArray(rawTree)) {
-    throw new Error("Imported data must be an array of nodes.");
-  }
-
-  return rawTree.map(normalizeNode);
+  return normalizeTree(rawTree, "Imported data must be an array of nodes.");
 }
 
 export function exportToSwiftTree(tree) {
@@ -160,11 +212,7 @@ export function exportToSwiftTree(tree) {
 }
 
 export function validateInternalTree(tree) {
-  if (!Array.isArray(tree)) {
-    throw new Error("Tree must be an array of nodes.");
-  }
-
-  return tree.map(normalizeNode);
+  return normalizeTree(tree, "Tree must be an array of nodes.");
 }
 
 export function findNode(tree, nodeId) {
@@ -267,7 +315,9 @@ export function toggleNodeExpanded(tree, nodeId) {
 }
 
 export function addRootNode(tree, node) {
-  return [...cloneTree(tree), normalizeNode(node)];
+  const nextTree = cloneTree(tree);
+  nextTree.push(normalizeNode(node, collectNodeIds(nextTree)));
+  return validateInternalTree(nextTree);
 }
 
 export function addChildNode(tree, parentId, node) {
@@ -278,9 +328,10 @@ export function addChildNode(tree, parentId, node) {
     return nextTree;
   }
 
-  ensureListNode(parent).push(normalizeNode(node));
+  const normalizedNode = normalizeNode(node, collectNodeIds(nextTree));
+  ensureListNode(parent).push(normalizedNode);
   parent.isExpanded = true;
-  return nextTree;
+  return validateInternalTree(nextTree);
 }
 
 export function deleteNode(tree, nodeId, selectedId) {
@@ -379,5 +430,5 @@ export function moveNodeToContainerEnd(tree, dragId, parentId) {
 }
 
 export function mergeTrees(existingTree, importedTree) {
-  return [...cloneTree(existingTree), ...cloneTree(importedTree)];
+  return validateInternalTree([...cloneTree(existingTree), ...cloneTree(importedTree)]);
 }

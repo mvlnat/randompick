@@ -17,6 +17,14 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function validateVersion(version, message) {
+  if (!Number.isSafeInteger(version) || version < 0) {
+    throw new Error(message);
+  }
+
+  return version;
+}
+
 export class StateStore {
   constructor(databasePath) {
     ensureParentDirectory(databasePath);
@@ -54,14 +62,33 @@ export class StateStore {
       };
     }
 
+    const tree = validateInternalTree(JSON.parse(row.tree_json));
+    const treeJson = JSON.stringify(tree);
+    if (treeJson !== row.tree_json) {
+      this.db.prepare(`
+        UPDATE app_state
+        SET tree_json = $tree_json
+        WHERE id = 1
+      `).run({
+        $tree_json: treeJson,
+      });
+    }
+
+    const version = validateVersion(
+      row.version,
+      "Stored state version must be a non-negative safe integer.",
+    );
+
     return {
-      version: row.version,
-      tree: validateInternalTree(JSON.parse(row.tree_json)),
+      version,
+      tree,
       updatedAt: row.updated_at,
     };
   }
 
   saveState(expectedVersion, tree) {
+    validateVersion(expectedVersion, "Expected version must be a non-negative safe integer.");
+
     const current = this.getState();
     if (current.version !== expectedVersion) {
       return {
@@ -69,6 +96,10 @@ export class StateStore {
         reason: "conflict",
         state: current,
       };
+    }
+
+    if (current.version >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("State version is too large to increment safely.");
     }
 
     const nextState = {
@@ -109,6 +140,10 @@ export class StateStore {
   }
 
   importState(mode, payload) {
+    if (!["merge", "replace"].includes(mode)) {
+      throw new Error("Import mode must be 'merge' or 'replace'.");
+    }
+
     const importedTree = normalizeImportedTree(payload);
     const current = this.getState();
 
@@ -130,4 +165,3 @@ export class StateStore {
     this.db.close();
   }
 }
-

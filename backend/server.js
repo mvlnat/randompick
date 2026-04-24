@@ -4,6 +4,11 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 
 import { StateStore } from "./state-store.js";
+import {
+  normalizeImportedTree,
+  TreeValidationError,
+  validateInternalTree,
+} from "../shared/tree.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,21 +49,23 @@ function baseHeaders(extraHeaders = {}) {
   };
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response, statusCode, payload, { includeBody = true } = {}) {
   const body = JSON.stringify(payload);
   response.writeHead(statusCode, baseHeaders({
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
   }));
-  response.end(body);
+  response.end(includeBody ? body : undefined);
 }
 
-function sendText(response, statusCode, body, contentType) {
-  response.writeHead(statusCode, baseHeaders({
-    "Content-Type": contentType,
+function sendMethodNotAllowed(response, allowedMethods, { includeBody = true } = {}) {
+  const body = JSON.stringify({ error: "Method not allowed" });
+  response.writeHead(405, baseHeaders({
+    "Allow": allowedMethods.join(", "),
+    "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
   }));
-  response.end(body);
+  response.end(includeBody ? body : undefined);
 }
 
 function readRequestBody(request) {
@@ -111,6 +118,21 @@ function parseJsonBody(body) {
   }
 }
 
+function isTreeValidationError(error) {
+  return error instanceof TreeValidationError || error?.name === "TreeValidationError";
+}
+
+function sendTreeValidationError(response, error, options = {}) {
+  if (!isTreeValidationError(error)) {
+    return false;
+  }
+
+  sendJson(response, 400, {
+    error: error instanceof Error ? error.message : "Invalid tree data.",
+  }, options);
+  return true;
+}
+
 function getContentType(filePath) {
   const extension = path.extname(filePath).toLowerCase();
 
@@ -130,7 +152,7 @@ function getContentType(filePath) {
   }
 }
 
-function serveFile(response, filePath) {
+function serveFile(response, filePath, { includeBody = true } = {}) {
   try {
     const body = fs.readFileSync(filePath);
     response.writeHead(200, baseHeaders({
@@ -138,9 +160,9 @@ function serveFile(response, filePath) {
       "Content-Length": body.length,
       "Cache-Control": "no-store",
     }));
-    response.end(body);
+    response.end(includeBody ? body : undefined);
   } catch {
-    sendJson(response, 404, { error: "Not found" });
+    sendJson(response, 404, { error: "Not found" }, { includeBody });
   }
 }
 
@@ -163,66 +185,151 @@ function resolveWithinRoot(root, requestedPath) {
   return resolved;
 }
 
+function isFileWithinRoot(root, filePath) {
+  try {
+    const rootPath = fs.realpathSync(root);
+    const targetPath = fs.realpathSync(filePath);
+    const relative = path.relative(rootPath, targetPath);
+
+    return !relative.startsWith("..")
+      && !path.isAbsolute(relative)
+      && fs.statSync(targetPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
 async function handleApi(store, request, response, url) {
-  if (request.method === "GET" && url.pathname === "/api/healthz") {
-    sendJson(response, 200, { status: "ok" });
-    return;
-  }
+  const includeBody = request.method !== "HEAD";
+  const isGetRequest = request.method === "GET" || request.method === "HEAD";
 
-  if (request.method === "GET" && url.pathname === "/api/state") {
-    sendJson(response, 200, store.getState());
-    return;
-  }
-
-  if (request.method === "PUT" && url.pathname === "/api/state") {
-    const body = parseJsonBody(await readRequestBody(request));
-
-    if (!body || typeof body !== "object") {
-      sendJson(response, 400, { error: "Expected a JSON object body." });
+  if (url.pathname === "/api/healthz") {
+    if (!isGetRequest) {
+      sendMethodNotAllowed(response, ["GET", "HEAD"], { includeBody });
       return;
     }
 
-    const result = store.saveState(Number(body.version ?? -1), body.tree);
+    sendJson(response, 200, { status: "ok" }, { includeBody });
+    return;
+  }
+
+  if (url.pathname === "/api/state") {
+    if (isGetRequest) {
+      sendJson(response, 200, store.getState(), { includeBody });
+      return;
+    }
+
+    if (request.method !== "PUT") {
+      sendMethodNotAllowed(response, ["GET", "HEAD", "PUT"], { includeBody });
+      return;
+    }
+
+    const body = parseJsonBody(await readRequestBody(request));
+
+    if (!body || typeof body !== "object") {
+      sendJson(response, 400, { error: "Expected a JSON object body." }, { includeBody });
+      return;
+    }
+
+    const expectedVersion = body.version;
+    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+      sendJson(
+        response,
+        400,
+        { error: "Expected a non-negative safe integer version." },
+        { includeBody },
+      );
+      return;
+    }
+
+    let tree = null;
+    try {
+      tree = validateInternalTree(body.tree);
+    } catch (error) {
+      if (sendTreeValidationError(response, error, { includeBody })) {
+        return;
+      }
+
+      throw error;
+    }
+
+    const result = store.saveState(expectedVersion, tree);
     if (!result.ok) {
       sendJson(response, 409, {
         error: "Save conflict",
         state: result.state,
-      });
+      }, { includeBody });
       return;
     }
 
-    sendJson(response, 200, result.state);
+    sendJson(response, 200, result.state, { includeBody });
     return;
   }
 
-  if (request.method === "POST" && url.pathname === "/api/import") {
-    const mode = url.searchParams.get("mode") === "merge" ? "merge" : "replace";
+  if (url.pathname === "/api/import") {
+    if (request.method !== "POST") {
+      sendMethodNotAllowed(response, ["POST"], { includeBody });
+      return;
+    }
+
+    const mode = url.searchParams.has("mode") ? url.searchParams.get("mode") : "replace";
+    if (!["merge", "replace"].includes(mode)) {
+      sendJson(
+        response,
+        400,
+        { error: "Import mode must be 'merge' or 'replace'." },
+        { includeBody },
+      );
+      return;
+    }
+
     const body = parseJsonBody(await readRequestBody(request));
     const payload = Array.isArray(body) ? body : body?.tree;
 
     if (!Array.isArray(payload)) {
-      sendJson(response, 400, { error: "Import body must be a JSON array or { tree: [] }." });
+      sendJson(
+        response,
+        400,
+        { error: "Import body must be a JSON array or { tree: [] }." },
+        { includeBody },
+      );
       return;
     }
 
-    const result = store.importState(mode, payload);
-    sendJson(response, 200, result.state);
+    let tree = null;
+    try {
+      tree = normalizeImportedTree(payload);
+    } catch (error) {
+      if (sendTreeValidationError(response, error, { includeBody })) {
+        return;
+      }
+
+      throw error;
+    }
+
+    const result = store.importState(mode, tree);
+    sendJson(response, 200, result.state, { includeBody });
     return;
   }
 
-  if (request.method === "GET" && url.pathname === "/api/export") {
+  if (url.pathname === "/api/export") {
+    if (!isGetRequest) {
+      sendMethodNotAllowed(response, ["GET", "HEAD"], { includeBody });
+      return;
+    }
+
     const body = JSON.stringify(store.exportState(), null, 2);
-    response.writeHead(200, {
+    response.writeHead(200, baseHeaders({
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": 'attachment; filename="randompick-export.json"',
       "Content-Length": Buffer.byteLength(body),
       "Cache-Control": "no-store",
-    });
-    response.end(body);
+    }));
+    response.end(includeBody ? body : undefined);
     return;
   }
 
-  sendJson(response, 404, { error: "Not found" });
+  sendJson(response, 404, { error: "Not found" }, { includeBody });
 }
 
 export function createAppServer({
@@ -238,9 +345,15 @@ export function createAppServer({
   return http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+      const includeBody = request.method !== "HEAD";
 
       if (url.pathname.startsWith("/api/")) {
         await handleApi(store, request, response, url);
+        return;
+      }
+
+      if (!["GET", "HEAD"].includes(request.method)) {
+        sendMethodNotAllowed(response, ["GET", "HEAD"], { includeBody });
         return;
       }
 
@@ -248,22 +361,32 @@ export function createAppServer({
         const requested = decodePathname(url.pathname.replace(/^\/shared\//, ""));
         const filePath = resolveWithinRoot(sharedRoot, requested);
         if (!filePath) {
-          sendJson(response, 400, { error: "Invalid path" });
+          sendJson(response, 400, { error: "Invalid path" }, { includeBody });
           return;
         }
 
-        serveFile(response, filePath);
+        if (!isFileWithinRoot(sharedRoot, filePath)) {
+          sendJson(response, 404, { error: "Not found" }, { includeBody });
+          return;
+        }
+
+        serveFile(response, filePath, { includeBody });
         return;
       }
 
       if (url.pathname === "/vendor/sortablejs.js") {
         const filePath = resolveWithinRoot(vendorRoot, "sortablejs/modular/sortable.esm.js");
         if (!filePath) {
-          sendJson(response, 404, { error: "Not found" });
+          sendJson(response, 404, { error: "Not found" }, { includeBody });
           return;
         }
 
-        serveFile(response, filePath);
+        if (!isFileWithinRoot(vendorRoot, filePath)) {
+          sendJson(response, 404, { error: "Not found" }, { includeBody });
+          return;
+        }
+
+        serveFile(response, filePath, { includeBody });
         return;
       }
 
@@ -271,18 +394,30 @@ export function createAppServer({
       const filePath = resolveWithinRoot(publicRoot, requestedPath);
 
       if (!filePath) {
-        sendJson(response, 400, { error: "Invalid path" });
+        sendJson(response, 400, { error: "Invalid path" }, { includeBody });
         return;
       }
 
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        serveFile(response, filePath);
+      if (isFileWithinRoot(publicRoot, filePath)) {
+        serveFile(response, filePath, { includeBody });
         return;
       }
 
-      serveFile(response, path.join(publicRoot, "index.html"));
+      if (path.extname(requestedPath)) {
+        sendJson(response, 404, { error: "Not found" }, { includeBody });
+        return;
+      }
+
+      const appShellPath = path.join(publicRoot, "index.html");
+      if (!isFileWithinRoot(publicRoot, appShellPath)) {
+        sendJson(response, 404, { error: "Not found" }, { includeBody });
+        return;
+      }
+
+      serveFile(response, appShellPath, { includeBody });
     } catch (error) {
       const statusCode = error instanceof HttpError ? error.statusCode : 500;
+      const includeBody = request.method !== "HEAD";
 
       if (statusCode >= 500) {
         console.error("RandomPick request failed", error);
@@ -293,7 +428,7 @@ export function createAppServer({
           statusCode >= 500
             ? "Unexpected server error"
             : (error instanceof Error ? error.message : "Request failed"),
-      });
+      }, { includeBody });
     }
   });
 }

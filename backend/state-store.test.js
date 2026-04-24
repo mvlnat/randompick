@@ -71,6 +71,92 @@ test("StateStore reports conflicts with current state", () => {
   cleanup();
 });
 
+test("StateStore rejects invalid expected versions", () => {
+  const { store, cleanup } = createStore();
+
+  assert.throws(
+    () => store.saveState("0", []),
+    /Expected version must be a non-negative safe integer\./,
+  );
+  assert.throws(
+    () => store.saveState(Number.MAX_SAFE_INTEGER + 1, []),
+    /Expected version must be a non-negative safe integer\./,
+  );
+
+  cleanup();
+});
+
+test("StateStore rejects invalid stored versions", () => {
+  const { store, cleanup } = createStore();
+
+  store.db.prepare(`
+    INSERT INTO app_state (id, version, tree_json, updated_at)
+    VALUES (1, -1, '[]', '2026-01-01T00:00:00.000Z')
+  `).run();
+
+  assert.throws(
+    () => store.getState(),
+    /Stored state version must be a non-negative safe integer\./,
+  );
+
+  cleanup();
+});
+
+test("StateStore refuses unsafe version increments", () => {
+  const { store, cleanup } = createStore();
+
+  store.db.prepare(`
+    INSERT INTO app_state (id, version, tree_json, updated_at)
+    VALUES (1, $version, '[]', '2026-01-01T00:00:00.000Z')
+  `).run({
+    $version: Number.MAX_SAFE_INTEGER,
+  });
+
+  assert.throws(
+    () => store.saveState(Number.MAX_SAFE_INTEGER, []),
+    /State version is too large to increment safely\./,
+  );
+
+  cleanup();
+});
+
+test("StateStore persists normalized repaired state on read", () => {
+  const { store, cleanup } = createStore();
+  const duplicatedTree = [
+    {
+      id: "duplicate",
+      title: "A",
+      kind: "list",
+      isExpanded: true,
+      children: [
+        {
+          id: "duplicate",
+          title: "B",
+          kind: "item",
+          isExpanded: false,
+          children: [],
+        },
+      ],
+    },
+  ];
+
+  store.db.prepare(`
+    INSERT INTO app_state (id, version, tree_json, updated_at)
+    VALUES (1, 1, $tree_json, '2026-01-01T00:00:00.000Z')
+  `).run({
+    $tree_json: JSON.stringify(duplicatedTree),
+  });
+
+  const firstRead = store.getState();
+  const secondRead = store.getState();
+
+  assert.equal(firstRead.tree[0].id, "duplicate");
+  assert.notEqual(firstRead.tree[0].children[0].id, "duplicate");
+  assert.deepEqual(secondRead.tree, firstRead.tree);
+
+  cleanup();
+});
+
 test("StateStore importState merges imported roots", () => {
   const { store, cleanup } = createStore();
 
@@ -99,3 +185,13 @@ test("StateStore importState merges imported roots", () => {
   cleanup();
 });
 
+test("StateStore rejects invalid import modes", () => {
+  const { store, cleanup } = createStore();
+
+  assert.throws(
+    () => store.importState("append", []),
+    /Import mode must be 'merge' or 'replace'\./,
+  );
+
+  cleanup();
+});

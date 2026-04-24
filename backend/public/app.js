@@ -4,6 +4,7 @@ import {
   createNode,
   deleteNode,
   deriveSelection,
+  exportToSwiftTree,
   findNode,
   findParentId,
   findPath,
@@ -44,6 +45,8 @@ const state = {
 let saveTimer = null;
 let saveInFlight = false;
 let pendingSave = false;
+let pendingSaveShouldRender = false;
+let saveGeneration = 0;
 let sidebarSortable = null;
 let detailSortable = null;
 const dragDecorationClasses = [
@@ -78,6 +81,10 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value);
 }
 
 function applyAppearance() {
@@ -145,7 +152,14 @@ function clearDragDecorations() {
 }
 
 function getDataSelector(value) {
-  return globalThis.CSS?.escape ? CSS.escape(value) : value.replaceAll('"', '\\"');
+  if (globalThis.CSS?.escape) {
+    return CSS.escape(value);
+  }
+
+  return String(value).replace(/[\0-\x1F\x7F"\\]/g, (character) => {
+    const codePoint = character.charCodeAt(0).toString(16);
+    return `\\${codePoint} `;
+  });
 }
 
 function syncDragDecorations() {
@@ -489,6 +503,7 @@ function renderSidebarRows(rows) {
 
   return rows
     .map(({ node, depth }) => {
+      const nodeId = escapeAttribute(node.id);
       const classes = [
         "tree-row",
         isSelected(node.id) ? "is-selected" : "",
@@ -501,7 +516,7 @@ function renderSidebarRows(rows) {
         <div
           class="${classes}"
           data-role="sidebar-row"
-          data-node-id="${node.id}"
+          data-node-id="${nodeId}"
           role="treeitem"
           aria-level="${depth + 1}"
           aria-selected="${isSelected(node.id) ? "true" : "false"}"
@@ -511,14 +526,14 @@ function renderSidebarRows(rows) {
           <button
             class="tree-grip"
             data-role="sidebar-handle"
-            data-node-id="${node.id}"
+            data-node-id="${nodeId}"
             aria-label="Drag to move ${escapeHtml(node.title)}"
             type="button"
           >⋮⋮</button>
           <button
             class="tree-toggle"
             data-action="toggle-expand"
-            data-node-id="${node.id}"
+            data-node-id="${nodeId}"
             ${canExpand ? "" : "disabled"}
             aria-label="${canExpand && node.isExpanded ? "Collapse" : "Expand"}"
             aria-hidden="${canExpand ? "false" : "true"}"
@@ -529,7 +544,7 @@ function renderSidebarRows(rows) {
           <button
             class="tree-main"
             data-action="select-node"
-            data-node-id="${node.id}"
+            data-node-id="${nodeId}"
             aria-current="${isSelected(node.id) ? "true" : "false"}"
             aria-label="Select ${escapeHtml(node.title)}"
             type="button"
@@ -537,8 +552,8 @@ function renderSidebarRows(rows) {
             <span class="tree-title">${escapeHtml(node.title)}</span>
           </button>
           <div class="tree-actions">
-            <button class="icon-button" data-action="add-child-node" data-node-id="${node.id}" aria-label="Add child node inside ${escapeHtml(node.title)}" type="button">+</button>
-            <button class="icon-button" data-action="delete-node" data-node-id="${node.id}" aria-label="Delete ${escapeHtml(node.title)}" type="button">×</button>
+            <button class="icon-button" data-action="add-child-node" data-node-id="${nodeId}" aria-label="Add child node inside ${escapeHtml(node.title)}" type="button">+</button>
+            <button class="icon-button" data-action="delete-node" data-node-id="${nodeId}" aria-label="Delete ${escapeHtml(node.title)}" type="button">×</button>
           </div>
         </div>
       `;
@@ -561,21 +576,24 @@ function renderDetailContent(selectedNode) {
     .join(" / ");
 
   const children = selectedNode.children;
+  const selectedNodeId = escapeAttribute(selectedNode.id);
+  const parentId = findParentId(state.tree, selectedNode.id);
   const rows = children.length
     ? children
         .map((child, index) => {
+          const childId = escapeAttribute(child.id);
           return `
             <div
               class="detail-row"
               data-role="detail-row"
-              data-node-id="${child.id}"
+              data-node-id="${childId}"
               data-index="${index}"
               role="listitem"
             >
               <button
                 class="drag-handle"
                 data-role="detail-handle"
-                data-node-id="${child.id}"
+                data-node-id="${childId}"
                 data-index="${index}"
                 aria-label="Drag to reorder ${escapeHtml(child.title)}"
                 type="button"
@@ -583,12 +601,12 @@ function renderDetailContent(selectedNode) {
               <input
                 class="detail-input"
                 data-action="edit-title"
-                data-node-id="${child.id}"
+                data-node-id="${childId}"
                 aria-label="Child node title"
                 value="${escapeHtml(child.title)}"
               />
-              <button class="button button-ghost" data-action="open-node" data-node-id="${child.id}" type="button">Open</button>
-              <button class="button button-ghost" data-action="delete-node" data-node-id="${child.id}" type="button">Delete</button>
+              <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" type="button">Open</button>
+              <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" type="button">Delete</button>
             </div>
           `;
         })
@@ -609,7 +627,7 @@ function renderDetailContent(selectedNode) {
             <input
               class="detail-title-input"
               data-action="edit-title"
-              data-node-id="${selectedNode.id}"
+              data-node-id="${selectedNodeId}"
               aria-label="Selected node title"
               value="${escapeHtml(selectedNode.title)}"
             />
@@ -619,10 +637,10 @@ function renderDetailContent(selectedNode) {
           </p>
         </div>
         <div class="detail-header-actions">
-          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNode.id}" ${children.length === 0 ? "disabled" : ""} type="button">Pick Random</button>
+          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNodeId}" ${children.length === 0 ? "disabled" : ""} type="button">Pick Random</button>
           ${
-            findParentId(state.tree, selectedNode.id)
-              ? `<button class="button button-ghost" data-action="select-node" data-node-id="${findParentId(state.tree, selectedNode.id)}" type="button">Back to Parent</button>`
+            parentId
+              ? `<button class="button button-ghost" data-action="select-node" data-node-id="${escapeAttribute(parentId)}" type="button">Back to Parent</button>`
               : ""
           }
         </div>
@@ -754,12 +772,13 @@ function render() {
 }
 
 async function request(url, options = {}) {
+  const { responseType = "auto", headers = {}, ...fetchOptions } = options;
   const response = await fetch(url, {
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...headers,
     },
-    ...options,
   });
 
   if (!response.ok) {
@@ -776,6 +795,10 @@ async function request(url, options = {}) {
     throw error;
   }
 
+  if (responseType === "blob") {
+    return response.blob();
+  }
+
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     return response.json();
@@ -790,11 +813,14 @@ async function loadState() {
 
   try {
     const payload = await request("/api/state");
+    saveGeneration += 1;
     state.tree = payload.tree;
     state.version = payload.version;
     state.selectedId = deriveSelection(state.tree, state.selectedId);
     state.saveStatus = "saved";
     state.errorMessage = "";
+    state.conflictState = null;
+    cancelScheduledSave();
   } catch (error) {
     state.saveStatus = "error";
     state.errorMessage = error instanceof Error ? error.message : "Failed to load state.";
@@ -803,7 +829,7 @@ async function loadState() {
   render();
 }
 
-function queueSave(delay = 400, shouldRender = true) {
+function queueSave(delay = 400, shouldRender = true, shouldRenderFlush = true) {
   state.saveStatus = "dirty";
   if (shouldRender) {
     render();
@@ -815,24 +841,45 @@ function queueSave(delay = 400, shouldRender = true) {
 
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    flushSave();
+    flushSave({ shouldRender: shouldRenderFlush });
   }, delay);
 }
 
-async function flushSave() {
+function cancelScheduledSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+
+  pendingSave = false;
+  pendingSaveShouldRender = false;
+}
+
+async function flushSave({ shouldRender = true } = {}) {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+
   if (saveInFlight) {
     pendingSave = true;
+    pendingSaveShouldRender = pendingSaveShouldRender || shouldRender;
     return;
   }
 
   saveInFlight = true;
   state.saveStatus = "saving";
   state.errorMessage = "";
-  render();
+  if (shouldRender) {
+    render();
+  }
 
+  const submittedTree = state.tree;
+  const submittedVersion = state.version;
+  const submittedGeneration = saveGeneration;
   const payload = {
-    version: state.version,
-    tree: state.tree,
+    version: submittedVersion,
+    tree: submittedTree,
   };
 
   try {
@@ -840,10 +887,27 @@ async function flushSave() {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+
+    if (state.version !== submittedVersion || saveGeneration !== submittedGeneration) {
+      return;
+    }
+
     state.version = result.version;
-    state.saveStatus = "saved";
     state.conflictState = null;
+
+    if (state.tree === submittedTree) {
+      state.tree = result.tree;
+      state.selectedId = deriveSelection(state.tree, state.selectedId);
+      state.saveStatus = "saved";
+    } else {
+      state.saveStatus = "dirty";
+      pendingSave = true;
+    }
   } catch (error) {
+    if (state.version !== submittedVersion || saveGeneration !== submittedGeneration) {
+      return;
+    }
+
     if (error.status === 409 && error.payload?.state) {
       state.saveStatus = "conflict";
       state.conflictState = error.payload.state;
@@ -854,10 +918,14 @@ async function flushSave() {
     }
   } finally {
     saveInFlight = false;
-    render();
+    if (shouldRender || state.saveStatus === "error" || state.saveStatus === "conflict") {
+      render();
+    }
     if (pendingSave) {
+      const shouldRenderPendingSave = pendingSaveShouldRender;
       pendingSave = false;
-      flushSave();
+      pendingSaveShouldRender = false;
+      flushSave({ shouldRender: shouldRenderPendingSave });
     }
   }
 }
@@ -906,6 +974,10 @@ function selectNode(nodeId) {
 }
 
 function handleAction(target) {
+  if (!(target instanceof Element)) {
+    return;
+  }
+
   const actionSource = target.closest("[data-action]");
   if (!actionSource) {
     return;
@@ -1002,10 +1074,14 @@ function handleAction(target) {
 
 function handleInput(event) {
   const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
 
   if (target.matches('[data-action="edit-title"]')) {
     state.tree = updateNodeTitle(state.tree, target.dataset.nodeId, target.value);
     state.saveStatus = "dirty";
+    queueSave(600, false, false);
     return;
   }
 
@@ -1016,6 +1092,9 @@ function handleInput(event) {
 
 function handleChange(event) {
   const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
 
   if (target.matches('[data-action="edit-title"]')) {
     if (state.saveStatus === "dirty") {
@@ -1048,6 +1127,10 @@ function handleChange(event) {
 
 function handleSubmit(event) {
   const form = event.target;
+  if (!(form instanceof Element)) {
+    return;
+  }
+
   if (!form.matches('[data-action="submit-composer"]')) {
     return;
   }
@@ -1084,12 +1167,15 @@ async function importTree(mode) {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    saveGeneration += 1;
     state.tree = result.tree;
     state.version = result.version;
     state.selectedId = deriveSelection(state.tree, getFirstRootId(state.tree));
     state.importDialog = null;
     state.saveStatus = "saved";
     state.errorMessage = "";
+    state.conflictState = null;
+    cancelScheduledSave();
     render();
   } catch (error) {
     state.errorMessage = error instanceof Error ? error.message : "Failed to import JSON.";
@@ -1097,19 +1183,22 @@ async function importTree(mode) {
   }
 }
 
-async function exportTree() {
+function exportTree() {
   try {
-    const blob = await request("/api/export", {
-      headers: {
-        "Content-Type": "application/json",
-      },
+    const exportJson = JSON.stringify(exportToSwiftTree(state.tree), null, 2);
+    const blob = new Blob([exportJson], {
+      type: "application/json",
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "randompick-export.json";
+    document.body.append(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      anchor.remove();
+    }, 0);
   } catch (error) {
     state.errorMessage = error instanceof Error ? error.message : "Failed to export JSON.";
     render();

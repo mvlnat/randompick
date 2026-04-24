@@ -7,7 +7,7 @@ Private personal web app for nested lists, lightweight decision-making, and rand
 - Single Node service
 - Browser-side ES modules
 - SQLite via Node's built-in `node:sqlite`
-- No external runtime dependencies
+- SortableJS for browser drag-and-drop
 
 ## Run locally
 
