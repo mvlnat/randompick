@@ -172,32 +172,6 @@ select {
   color: var(--text-primary);
 }
 
-.save-pill {
-  min-width: 72px;
-  min-height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.save-pill[data-status="saving"],
-.save-pill[data-status="dirty"] {
-  color: var(--accent);
-}
-
-.save-pill[data-status="error"],
-.save-pill[data-status="conflict"] {
-  color: var(--danger);
-}
-
 .workspace {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);

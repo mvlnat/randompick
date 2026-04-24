@@ -91,23 +91,6 @@ function applyAppearance() {
   document.documentElement.dataset.theme = "dark";
 }
 
-function saveStatusLabel() {
-  switch (state.saveStatus) {
-    case "dirty":
-      return "Unsaved";
-    case "saving":
-      return "Saving...";
-    case "error":
-      return "Save error";
-    case "conflict":
-      return "Save conflict";
-    case "loading":
-      return "Loading...";
-    default:
-      return "Saved";
-  }
-}
-
 function getVisibleRows() {
   return flattenVisibleTree(state.tree);
 }
@@ -637,12 +620,12 @@ function renderDetailContent(selectedNode) {
           </p>
         </div>
         <div class="detail-header-actions">
-          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNodeId}" ${children.length === 0 ? "disabled" : ""} type="button">Pick Random</button>
           ${
             parentId
               ? `<button class="button button-ghost" data-action="select-node" data-node-id="${escapeAttribute(parentId)}" type="button">Back to Parent</button>`
               : ""
           }
+          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNodeId}" ${children.length === 0 ? "disabled" : ""} type="button">Pick Random</button>
         </div>
       </div>
 
@@ -732,7 +715,6 @@ function render() {
         <div class="topbar-actions">
           <button class="button button-ghost" data-action="trigger-import" type="button">Import</button>
           <button class="button button-ghost" data-action="export-tree" type="button">Export</button>
-          <div class="save-pill" data-status="${state.saveStatus}" role="status" aria-live="polite" aria-atomic="true">${saveStatusLabel()}</div>
         </div>
       </header>
 
