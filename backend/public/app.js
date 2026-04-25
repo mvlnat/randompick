@@ -1,6 +1,7 @@
 import Sortable from "/vendor/sortablejs.js";
 import {
   addChildNode,
+  addRootNode,
   createNode,
   deleteNode,
   deriveSelection,
@@ -37,6 +38,7 @@ const state = {
   errorMessage: "",
   composerTitle: "",
   importDialog: null,
+  shortcutsDialog: false,
   randomResult: null,
   drag: createEmptyDragState(),
   conflictState: null,
@@ -375,7 +377,7 @@ function syncDetailSortable() {
 }
 
 function focusModalAction() {
-  if (!state.importDialog && !state.randomResult) {
+  if (!state.importDialog && !state.randomResult && !state.shortcutsDialog) {
     return;
   }
 
@@ -384,6 +386,27 @@ function focusModalAction() {
 
 function focusTreeSelection() {
   document.querySelector('[data-action="select-node"][aria-current="true"]')?.focus();
+}
+
+function focusSelectedTitle() {
+  if (!state.selectedId) {
+    return;
+  }
+
+  const input = document.querySelector(
+    `.detail-title-input[data-node-id="${getDataSelector(state.selectedId)}"]`,
+  );
+
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  input.focus();
+  input.select();
+}
+
+function focusComposerInput() {
+  document.querySelector(".composer-input")?.focus();
 }
 
 function selectVisibleRow(offset) {
@@ -479,7 +502,7 @@ function renderSidebarRows(rows) {
     return `
       <div class="sidebar-empty">
         <p>No nodes yet.</p>
-        <p>Import a JSON export to get started.</p>
+        <p>Create a root node or import a JSON export.</p>
       </div>
     `;
   }
@@ -685,6 +708,77 @@ function renderRandomResult() {
   `;
 }
 
+function renderShortcutKeys(keys) {
+  return `
+    <span class="shortcut-keys">
+      ${keys.map((key) => `<kbd>${escapeHtml(key)}</kbd>`).join("<span>+</span>")}
+    </span>
+  `;
+}
+
+function renderShortcutRow(keys, label) {
+  return `
+    <div class="shortcut-row">
+      <dt>${renderShortcutKeys(keys)}</dt>
+      <dd>${escapeHtml(label)}</dd>
+    </div>
+  `;
+}
+
+function renderShortcutsDialog() {
+  if (!state.shortcutsDialog) {
+    return "";
+  }
+
+  const modifier = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "Cmd" : "Ctrl";
+
+  return `
+    <div class="modal-backdrop" data-action="close-shortcuts-dialog">
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+        <div class="modal-heading">
+          <h2 id="shortcuts-title">Keyboard Shortcuts</h2>
+          <button class="button button-ghost" data-action="close-shortcuts-dialog" data-autofocus type="button">Close</button>
+        </div>
+        <div class="shortcut-sections">
+          <section class="shortcut-section">
+            <h3>Navigate</h3>
+            <dl class="shortcut-list">
+              ${renderShortcutRow(["Up", "Down"], "Move selection")}
+              ${renderShortcutRow(["Left"], "Collapse or move to parent")}
+              ${renderShortcutRow(["Right"], "Expand or move to first child")}
+              ${renderShortcutRow(["Home"], "Move to first visible node")}
+              ${renderShortcutRow(["End"], "Move to last visible node")}
+              ${renderShortcutRow([modifier, "1"], "Move to first root")}
+            </dl>
+          </section>
+          <section class="shortcut-section">
+            <h3>Edit</h3>
+            <dl class="shortcut-list">
+              ${renderShortcutRow(["N"], "Add child to selection")}
+              ${renderShortcutRow(["Shift", "N"], "Add root node")}
+              ${renderShortcutRow(["E"], "Edit selected title")}
+              ${renderShortcutRow(["/"], "Focus add-child field")}
+              ${renderShortcutRow(["Delete"], "Delete selected node")}
+              ${renderShortcutRow([modifier, "S"], "Save now")}
+            </dl>
+          </section>
+          <section class="shortcut-section">
+            <h3>Tools</h3>
+            <dl class="shortcut-list">
+              ${renderShortcutRow(["R"], "Pick random child")}
+              ${renderShortcutRow([modifier, "R"], "Pick random child")}
+              ${renderShortcutRow([modifier, "O"], "Import JSON")}
+              ${renderShortcutRow([modifier, "E"], "Export JSON")}
+              ${renderShortcutRow(["?"], "Show shortcuts")}
+              ${renderShortcutRow(["Esc"], "Close dialog")}
+            </dl>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderConflictBanner() {
   if (state.saveStatus !== "conflict" || !state.conflictState) {
     return "";
@@ -713,8 +807,10 @@ function render() {
           <h1>RandomPick</h1>
         </div>
         <div class="topbar-actions">
+          <button class="button button-ghost" data-action="add-root-node" type="button">New Root</button>
           <button class="button button-ghost" data-action="trigger-import" type="button">Import</button>
           <button class="button button-ghost" data-action="export-tree" type="button">Export</button>
+          <button class="button button-ghost" data-action="open-shortcuts-dialog" type="button">Shortcuts</button>
         </div>
       </header>
 
@@ -745,6 +841,7 @@ function render() {
       </main>
       <input id="import-input" class="sr-only" type="file" accept="application/json" aria-label="Import JSON file" />
       ${renderImportDialog()}
+      ${renderShortcutsDialog()}
       ${renderRandomResult()}
     </div>
   `;
@@ -941,6 +1038,7 @@ function computeSidebarDropPosition(targetRow, clientY) {
 
 function dismissTransientState() {
   state.importDialog = null;
+  state.shortcutsDialog = false;
   state.randomResult = null;
 }
 
@@ -952,6 +1050,48 @@ function renderAndFocusComposer() {
 function selectNode(nodeId) {
   state.selectedId = deriveSelection(state.tree, nodeId);
   dismissTransientState();
+  render();
+}
+
+function addRootNodeAndFocus() {
+  const node = createNode({
+    title: "New Node",
+    kind: "list",
+  });
+
+  commitTree(addRootNode(state.tree, node), node.id, 0);
+  focusSelectedTitle();
+}
+
+function addChildNodeAndFocus() {
+  const selectedNode = getSelectedNode();
+  if (!selectedNode) {
+    addRootNodeAndFocus();
+    return;
+  }
+
+  const child = createNode({
+    title: "New Node",
+  });
+
+  commitTree(addChildNode(state.tree, selectedNode.id, child), child.id, 0);
+  focusSelectedTitle();
+}
+
+function pickRandomChild(nodeId) {
+  const selectedNode = findNode(state.tree, nodeId);
+  if (!selectedNode || selectedNode.children.length === 0) {
+    return;
+  }
+
+  const pick = selectedNode.children[Math.floor(Math.random() * selectedNode.children.length)];
+  if (nodeHasChildren(pick)) {
+    state.selectedId = pick.id;
+  } else {
+    state.randomResult = {
+      message: pick.title,
+    };
+  }
   render();
 }
 
@@ -973,6 +1113,10 @@ function handleAction(target) {
   const nodeId = actionSource.dataset.nodeId || null;
 
   switch (action) {
+    case "add-root-node": {
+      addRootNodeAndFocus();
+      return;
+    }
     case "add-child-node": {
       const child = createNode({ title: "New Node" });
       commitTree(addChildNode(state.tree, nodeId, child), nodeId, 0);
@@ -994,20 +1138,7 @@ function handleAction(target) {
       return;
     }
     case "pick-random": {
-      const selectedNode = findNode(state.tree, nodeId);
-      if (!selectedNode || selectedNode.children.length === 0) {
-        return;
-      }
-
-      const pick = selectedNode.children[Math.floor(Math.random() * selectedNode.children.length)];
-      if (nodeHasChildren(pick)) {
-        state.selectedId = pick.id;
-      } else {
-        state.randomResult = {
-          message: pick.title,
-        };
-      }
-      render();
+      pickRandomChild(nodeId);
       return;
     }
     case "dismiss-random-result": {
@@ -1021,6 +1152,16 @@ function handleAction(target) {
     }
     case "close-import-dialog": {
       state.importDialog = null;
+      render();
+      return;
+    }
+    case "open-shortcuts-dialog": {
+      state.shortcutsDialog = true;
+      render();
+      return;
+    }
+    case "close-shortcuts-dialog": {
+      state.shortcutsDialog = false;
       render();
       return;
     }
@@ -1052,6 +1193,18 @@ function handleAction(target) {
     default:
       break;
   }
+}
+
+function isTypingTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return target.matches("input, textarea, select") || target.isContentEditable;
+}
+
+function isPlainShortcut(event) {
+  return !event.altKey && !event.ctrlKey && !event.metaKey;
 }
 
 function handleInput(event) {
@@ -1199,10 +1352,20 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  const key = event.key.toLowerCase();
+  const commandKey = event.metaKey || event.ctrlKey;
+
   if (event.key === "Escape") {
     if (state.importDialog) {
       event.preventDefault();
       state.importDialog = null;
+      render();
+      return;
+    }
+
+    if (state.shortcutsDialog) {
+      event.preventDefault();
+      state.shortcutsDialog = false;
       render();
       return;
     }
@@ -1215,34 +1378,54 @@ window.addEventListener("keydown", (event) => {
     }
   }
 
-  if (state.importDialog || state.randomResult) {
+  if (state.importDialog || state.randomResult || state.shortcutsDialog) {
     return;
   }
 
-  const activeTag = document.activeElement?.tagName || "";
-  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(activeTag);
-
-  if (typing) {
-    return;
-  }
-
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "r") {
+  if (commandKey && key === "s") {
     event.preventDefault();
-    const selectedNode = getSelectedNode();
-    if (selectedNode && selectedNode.children.length > 0) {
-      const button = document.querySelector('[data-action="pick-random"]');
-      if (button) {
-        button.click();
-      }
-    }
+    flushSave({ shouldRender: false });
     return;
   }
 
-  if ((event.metaKey || event.ctrlKey) && event.key === "1") {
+  if (isTypingTarget(event.target)) {
+    return;
+  }
+
+  if (commandKey && key === "r") {
+    event.preventDefault();
+    pickRandomChild(state.selectedId);
+    return;
+  }
+
+  if (commandKey && key === "1") {
     event.preventDefault();
     state.selectedId = getFirstRootId(state.tree);
     render();
     focusTreeSelection();
+    return;
+  }
+
+  if (commandKey && key === "o") {
+    event.preventDefault();
+    document.querySelector("#import-input")?.click();
+    return;
+  }
+
+  if (commandKey && key === "e") {
+    event.preventDefault();
+    exportTree();
+    return;
+  }
+
+  if (!isPlainShortcut(event)) {
+    return;
+  }
+
+  if (event.key === "?" || (event.shiftKey && event.key === "/")) {
+    event.preventDefault();
+    state.shortcutsDialog = true;
+    render();
     return;
   }
 
@@ -1279,6 +1462,47 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "End") {
     event.preventDefault();
     moveSelectionEnd();
+    return;
+  }
+
+  if (event.repeat) {
+    return;
+  }
+
+  if (key === "n") {
+    event.preventDefault();
+    if (event.shiftKey) {
+      addRootNodeAndFocus();
+    } else {
+      addChildNodeAndFocus();
+    }
+    return;
+  }
+
+  if (key === "e") {
+    event.preventDefault();
+    focusSelectedTitle();
+    return;
+  }
+
+  if (event.key === "/") {
+    event.preventDefault();
+    focusComposerInput();
+    return;
+  }
+
+  if (event.key === "Delete") {
+    event.preventDefault();
+    if (state.selectedId) {
+      applyDelete(state.selectedId);
+      focusTreeSelection();
+    }
+    return;
+  }
+
+  if (key === "r") {
+    event.preventDefault();
+    pickRandomChild(state.selectedId);
   }
 });
 

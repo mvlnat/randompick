@@ -520,8 +520,24 @@ select {
   box-shadow: var(--shadow-lg);
 }
 
+.modal-card-wide {
+  width: min(760px, 100%);
+}
+
+.modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .modal-card h2 {
   margin: 0 0 8px;
+}
+
+.modal-heading h2 {
+  margin: 0;
 }
 
 .modal-card p {
@@ -535,6 +551,67 @@ select {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 14px;
+}
+
+.shortcut-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.shortcut-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.shortcut-list {
+  margin: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(112px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.shortcut-row dt,
+.shortcut-row dd {
+  margin: 0;
+}
+
+.shortcut-row dd {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.shortcut-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.shortcut-keys kbd {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-control);
+  color: var(--text-primary);
+  font: inherit;
+  box-shadow: inset 0 -1px 0 rgba(244, 236, 222, 0.08);
 }
 
 @media (max-width: 980px) {
@@ -577,6 +654,14 @@ select {
   .detail-row .button {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .shortcut-sections {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-row {
+    grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
   }
 }
 
