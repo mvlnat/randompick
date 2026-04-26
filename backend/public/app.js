@@ -678,8 +678,8 @@ function renderDetailContent(selectedNode) {
                   type="button"
                 >+</button>
               </div>
-              <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" type="button">Open</button>
-              <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" type="button">Delete</button>
+              <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" type="button">Open</button>
+              <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" type="button">Delete</button>
             </div>
           `;
         })
