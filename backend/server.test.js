@@ -450,6 +450,34 @@ test("server returns 400 for invalid node kind values", async () => {
   });
 });
 
+test("server returns 400 for invalid node weights", async () => {
+  await withServer({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        version: 0,
+        tree: [
+          {
+            id: "bad",
+            title: "Bad",
+            weight: 100,
+            kind: "item",
+            isExpanded: false,
+            children: [],
+          },
+        ],
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(payload.error, "Node weight must be an integer from 1 to 99.");
+  });
+});
+
 test("server returns 400 for invalid import nodes", async () => {
   await withServer({}, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/import`, {

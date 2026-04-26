@@ -1,3 +1,6 @@
+export const DEFAULT_NODE_WEIGHT = 1;
+export const MAX_NODE_WEIGHT = 99;
+
 const VALID_KINDS = new Set(["list", "item"]);
 
 export class TreeValidationError extends Error {
@@ -26,6 +29,22 @@ function normalizeTitle(value) {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : "Untitled";
+}
+
+function normalizeWeight(value) {
+  if (value === undefined || value === null) {
+    return DEFAULT_NODE_WEIGHT;
+  }
+
+  if (
+    !Number.isSafeInteger(value)
+    || value < DEFAULT_NODE_WEIGHT
+    || value > MAX_NODE_WEIGHT
+  ) {
+    throw new TreeValidationError(`Node weight must be an integer from ${DEFAULT_NODE_WEIGHT} to ${MAX_NODE_WEIGHT}.`);
+  }
+
+  return value;
 }
 
 function reserveNodeId(rawId, seenIds) {
@@ -78,6 +97,7 @@ function normalizeNode(raw, seenIds = new Set()) {
   return {
     id,
     title: normalizeTitle(raw.title),
+    weight: normalizeWeight(raw.weight),
     kind,
     isExpanded: kind === "list" ? Boolean(raw.isExpanded) : false,
     children,
@@ -112,6 +132,7 @@ function exportNodeToSwift(node) {
     id: node.id,
     isExpanded: Boolean(node.isExpanded),
     title: node.title,
+    ...(node.weight !== DEFAULT_NODE_WEIGHT ? { weight: node.weight } : {}),
   };
 
   if (node.kind === "list" || node.children.length > 0) {
@@ -193,10 +214,11 @@ export function cloneTree(tree) {
   return structuredClone(tree);
 }
 
-export function createNode({ title = "", kind = "item" } = {}) {
+export function createNode({ title = "", kind = "item", weight = DEFAULT_NODE_WEIGHT } = {}) {
   return normalizeNode({
     id: generateId(),
     title,
+    weight,
     kind,
     isExpanded: kind === "list",
     children: kind === "list" ? [] : undefined,
@@ -303,6 +325,12 @@ export function updateNode(tree, nodeId, updater) {
 export function updateNodeTitle(tree, nodeId, title) {
   return updateNode(tree, nodeId, (node) => {
     node.title = normalizeTitle(title);
+  });
+}
+
+export function updateNodeWeight(tree, nodeId, weight) {
+  return updateNode(tree, nodeId, (node) => {
+    node.weight = normalizeWeight(weight);
   });
 }
 

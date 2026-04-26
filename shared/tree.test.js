@@ -12,6 +12,7 @@ import {
   moveNodeRelative,
   moveNodeToParent,
   normalizeImportedTree,
+  updateNodeWeight,
   validateInternalTree,
 } from "./tree.js";
 
@@ -27,6 +28,61 @@ test("normalizeImportedTree keeps empty children arrays as lists", () => {
 
   assert.equal(tree[0].kind, "list");
   assert.deepEqual(tree[0].children, []);
+});
+
+test("normalizeImportedTree defaults and preserves node weights", () => {
+  const tree = normalizeImportedTree([
+    {
+      id: "root",
+      title: "Default",
+      isExpanded: true,
+      children: [
+        {
+          id: "plain",
+          title: "Plain",
+        },
+        {
+          id: "weighted",
+          title: "Weighted",
+          weight: 4,
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(tree[0].weight, 1);
+  assert.equal(tree[0].children[0].weight, 1);
+  assert.equal(tree[0].children[1].weight, 4);
+});
+
+test("validateInternalTree rejects invalid node weights", () => {
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        weight: 0,
+        kind: "item",
+        isExpanded: false,
+        children: [],
+      },
+    ]),
+    /Node weight must be an integer from 1 to 99\./,
+  );
+
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        weight: 1.5,
+        kind: "item",
+        isExpanded: false,
+        children: [],
+      },
+    ]),
+    /Node weight must be an integer from 1 to 99\./,
+  );
 });
 
 test("normalizeImportedTree regenerates duplicate node IDs", () => {
@@ -104,6 +160,13 @@ test("addChildNode promotes an item into a list", () => {
   assert.ok(promoted);
   assert.equal(promoted.kind, "list");
   assert.equal(promoted.children.length, 1);
+});
+
+test("updateNodeWeight changes a node weight", () => {
+  const item = createNode({ title: "Leaf", kind: "item" });
+  const tree = updateNodeWeight([item], item.id, 3);
+
+  assert.equal(findNode(tree, item.id).weight, 3);
 });
 
 test("add helpers regenerate duplicate inserted node IDs", () => {
@@ -208,6 +271,20 @@ test("exportToSwiftTree removes internal kind fields from items", () => {
       id: item.id,
       isExpanded: false,
       title: "Leaf",
+    },
+  ]);
+});
+
+test("exportToSwiftTree includes non-default weights", () => {
+  const item = createNode({ title: "Leaf", kind: "item", weight: 3 });
+  const exported = exportToSwiftTree([item]);
+
+  assert.deepEqual(exported, [
+    {
+      id: item.id,
+      isExpanded: false,
+      title: "Leaf",
+      weight: 3,
     },
   ]);
 });

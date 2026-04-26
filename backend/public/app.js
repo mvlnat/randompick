@@ -10,15 +10,19 @@ import {
   findParentId,
   findPath,
   flattenVisibleTree,
+  MAX_NODE_WEIGHT,
   getFirstRootId,
   moveNodeRelative,
   moveNodeToContainerEnd,
   moveNodeToParent,
   toggleNodeExpanded,
   updateNodeTitle,
+  updateNodeWeight,
 } from "/shared/tree.js";
 
 const app = document.querySelector("#app");
+const RANDOM_ROW_STEP_MS = 90;
+const RANDOM_ROW_FLASH_MS = 900;
 
 function createEmptyDragState() {
   return {
@@ -27,6 +31,13 @@ function createEmptyDragState() {
     targetId: null,
     position: null,
     targetIndex: null,
+  };
+}
+
+function createEmptyRandomPickState() {
+  return {
+    highlightId: null,
+    pickedId: null,
   };
 }
 
@@ -39,7 +50,8 @@ const state = {
   composerTitle: "",
   importDialog: null,
   shortcutsDialog: false,
-  randomResult: null,
+  randomPick: createEmptyRandomPickState(),
+  outlineOpen: false,
   drag: createEmptyDragState(),
   conflictState: null,
 };
@@ -51,6 +63,8 @@ let pendingSaveShouldRender = false;
 let saveGeneration = 0;
 let sidebarSortable = null;
 let detailSortable = null;
+let randomPickTimers = [];
+let randomPickGeneration = 0;
 const dragDecorationClasses = [
   "is-dragging",
   "is-drop-above",
@@ -58,6 +72,10 @@ const dragDecorationClasses = [
   "is-drop-below",
   "is-drop-before",
   "is-drop-invalid",
+];
+const randomPickDecorationClasses = [
+  "is-random-highlighted",
+  "is-random-picked",
 ];
 
 function dragStateEquals(nextDrag) {
@@ -130,6 +148,14 @@ function isDropInvalid(nodeId, dragId = state.drag.nodeId) {
 
 function clearDragDecorations() {
   for (const className of dragDecorationClasses) {
+    app.querySelectorAll(`.${className}`).forEach((element) => {
+      element.classList.remove(className);
+    });
+  }
+}
+
+function clearRandomPickDecorations() {
+  for (const className of randomPickDecorationClasses) {
     app.querySelectorAll(`.${className}`).forEach((element) => {
       element.classList.remove(className);
     });
@@ -242,6 +268,7 @@ function syncSidebarSortable() {
     swapThreshold: 0.65,
     chosenClass: "sortable-chosen",
     onStart(event) {
+      clearRandomPickAnimation();
       setDragState({
         ...createEmptyDragState(),
         nodeId: event.item.dataset.nodeId,
@@ -329,6 +356,7 @@ function syncDetailSortable() {
     handle: '[data-role="detail-handle"]',
     chosenClass: "sortable-chosen",
     onStart(event) {
+      clearRandomPickAnimation();
       setDragState({
         ...createEmptyDragState(),
         nodeId: event.item.dataset.nodeId,
@@ -377,7 +405,7 @@ function syncDetailSortable() {
 }
 
 function focusModalAction() {
-  if (!state.importDialog && !state.randomResult && !state.shortcutsDialog) {
+  if (!state.importDialog && !state.shortcutsDialog) {
     return;
   }
 
@@ -409,6 +437,13 @@ function focusComposerInput() {
   document.querySelector(".composer-input")?.focus();
 }
 
+function setSelectionAndFocus(nodeId) {
+  clearRandomPickAnimation();
+  state.selectedId = deriveSelection(state.tree, nodeId);
+  render();
+  focusTreeSelection();
+}
+
 function selectVisibleRow(offset) {
   const rows = getVisibleRows();
   const currentIndex = rows.findIndex(({ node }) => node.id === state.selectedId);
@@ -421,9 +456,7 @@ function selectVisibleRow(offset) {
     return;
   }
 
-  state.selectedId = nextRow.node.id;
-  render();
-  focusTreeSelection();
+  setSelectionAndFocus(nextRow.node.id);
 }
 
 function moveSelectionHome() {
@@ -432,9 +465,17 @@ function moveSelectionHome() {
     return;
   }
 
-  state.selectedId = firstVisible.node.id;
-  render();
-  focusTreeSelection();
+  setSelectionAndFocus(firstVisible.node.id);
+}
+
+function moveSelectionToCurrentRoot() {
+  const [rootNode] = findPath(state.tree, state.selectedId);
+  if (!rootNode) {
+    return;
+  }
+
+  state.outlineOpen = false;
+  setSelectionAndFocus(rootNode.id);
 }
 
 function moveSelectionEnd() {
@@ -444,9 +485,7 @@ function moveSelectionEnd() {
     return;
   }
 
-  state.selectedId = lastVisible.node.id;
-  render();
-  focusTreeSelection();
+  setSelectionAndFocus(lastVisible.node.id);
 }
 
 function navigateLeft() {
@@ -456,6 +495,7 @@ function navigateLeft() {
   }
 
   if (nodeHasChildren(selectedNode) && selectedNode.isExpanded) {
+    clearRandomPickAnimation();
     state.tree = toggleNodeExpanded(state.tree, selectedNode.id);
     render();
     queueSave(0, false);
@@ -468,9 +508,7 @@ function navigateLeft() {
     return;
   }
 
-  state.selectedId = parentId;
-  render();
-  focusTreeSelection();
+  setSelectionAndFocus(parentId);
 }
 
 function navigateRight() {
@@ -480,6 +518,7 @@ function navigateRight() {
   }
 
   if (!selectedNode.isExpanded) {
+    clearRandomPickAnimation();
     state.tree = toggleNodeExpanded(state.tree, selectedNode.id);
     render();
     queueSave(0, false);
@@ -492,9 +531,7 @@ function navigateRight() {
     return;
   }
 
-  state.selectedId = firstChildId;
-  render();
-  focusTreeSelection();
+  setSelectionAndFocus(firstChildId);
 }
 
 function renderSidebarRows(rows) {
@@ -588,9 +625,18 @@ function renderDetailContent(selectedNode) {
     ? children
         .map((child, index) => {
           const childId = escapeAttribute(child.id);
+          const childWeight = child.weight || 1;
+          const rowClasses = [
+            "detail-row",
+            state.randomPick.highlightId === child.id ? "is-random-highlighted" : "",
+            state.randomPick.pickedId === child.id ? "is-random-picked" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
           return `
             <div
-              class="detail-row"
+              class="${rowClasses}"
               data-role="detail-row"
               data-node-id="${childId}"
               data-index="${index}"
@@ -611,6 +657,27 @@ function renderDetailContent(selectedNode) {
                 aria-label="Child node title"
                 value="${escapeHtml(child.title)}"
               />
+              <div class="weight-control" role="group" aria-label="Weight for ${escapeHtml(child.title)}">
+                <button
+                  class="icon-button weight-button"
+                  data-action="change-weight"
+                  data-node-id="${childId}"
+                  data-delta="-1"
+                  ${childWeight <= 1 ? "disabled" : ""}
+                  aria-label="Decrease weight for ${escapeHtml(child.title)}"
+                  type="button"
+                >-</button>
+                <span class="weight-value" aria-label="Weight ${childWeight}">${childWeight}</span>
+                <button
+                  class="icon-button weight-button"
+                  data-action="change-weight"
+                  data-node-id="${childId}"
+                  data-delta="1"
+                  ${childWeight >= MAX_NODE_WEIGHT ? "disabled" : ""}
+                  aria-label="Increase weight for ${escapeHtml(child.title)}"
+                  type="button"
+                >+</button>
+              </div>
               <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" type="button">Open</button>
               <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" type="button">Delete</button>
             </div>
@@ -690,24 +757,6 @@ function renderImportDialog() {
   `;
 }
 
-function renderRandomResult() {
-  if (!state.randomResult) {
-    return "";
-  }
-
-  return `
-    <div class="modal-backdrop" data-action="dismiss-random-result">
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="random-title">
-        <h2 id="random-title">Random Pick</h2>
-        <p>${escapeHtml(state.randomResult.message)}</p>
-        <div class="modal-actions">
-          <button class="button button-primary" data-action="dismiss-random-result" data-autofocus type="button">Close</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 function renderShortcutKeys(keys) {
   return `
     <span class="shortcut-keys">
@@ -745,6 +794,8 @@ function renderShortcutsDialog() {
             <dl class="shortcut-list">
               ${renderShortcutRow(["Up", "Down"], "Move selection")}
               ${renderShortcutRow(["Left"], "Collapse or move to parent")}
+              ${renderShortcutRow(["Shift", "Left"], "Move to current root")}
+              ${renderShortcutRow(["E"], "Move to current root")}
               ${renderShortcutRow(["Right"], "Expand or move to first child")}
               ${renderShortcutRow(["Home"], "Move to first visible node")}
               ${renderShortcutRow(["End"], "Move to last visible node")}
@@ -756,7 +807,6 @@ function renderShortcutsDialog() {
             <dl class="shortcut-list">
               ${renderShortcutRow(["N"], "Add child to selection")}
               ${renderShortcutRow(["Shift", "N"], "Add root node")}
-              ${renderShortcutRow(["E"], "Edit selected title")}
               ${renderShortcutRow(["/"], "Focus add-child field")}
               ${renderShortcutRow(["Delete"], "Delete selected node")}
               ${renderShortcutRow([modifier, "S"], "Save now")}
@@ -807,6 +857,13 @@ function render() {
           <h1>RandomPick</h1>
         </div>
         <div class="topbar-actions">
+          <button
+            class="button button-ghost mobile-outline-toggle"
+            data-action="toggle-outline"
+            aria-controls="outline-panel"
+            aria-expanded="${state.outlineOpen ? "true" : "false"}"
+            type="button"
+          >${state.outlineOpen ? "Hide Nodes" : "Nodes"}</button>
           <button class="button button-ghost" data-action="add-root-node" type="button">New Root</button>
           <button class="button button-ghost" data-action="trigger-import" type="button">Import</button>
           <button class="button button-ghost" data-action="export-tree" type="button">Export</button>
@@ -814,14 +871,18 @@ function render() {
         </div>
       </header>
 
-      <main class="workspace">
-        <aside class="sidebar-panel">
+      <main class="workspace ${state.outlineOpen ? "is-outline-open" : ""}">
+        <button class="outline-scrim" data-action="close-outline" type="button" aria-label="Close node outline"></button>
+        <aside class="sidebar-panel" id="outline-panel">
           <div class="panel-header">
             <div>
               <p class="panel-label">Outline</p>
               <h2>Nodes</h2>
             </div>
-            <p class="panel-meta">${state.tree.length} top-level ${state.tree.length === 1 ? "node" : "nodes"}</p>
+            <div class="panel-header-actions">
+              <p class="panel-meta">${state.tree.length} top-level ${state.tree.length === 1 ? "node" : "nodes"}</p>
+              <button class="icon-button outline-close" data-action="close-outline" type="button" aria-label="Close node outline">×</button>
+            </div>
           </div>
           ${renderConflictBanner()}
           ${
@@ -842,7 +903,6 @@ function render() {
       <input id="import-input" class="sr-only" type="file" accept="application/json" aria-label="Import JSON file" />
       ${renderImportDialog()}
       ${renderShortcutsDialog()}
-      ${renderRandomResult()}
     </div>
   `;
   syncDragDecorations();
@@ -887,6 +947,7 @@ async function request(url, options = {}) {
 }
 
 async function loadState() {
+  clearRandomPickAnimation();
   state.saveStatus = "loading";
   render();
 
@@ -1010,6 +1071,7 @@ async function flushSave({ shouldRender = true } = {}) {
 }
 
 function commitTree(nextTree, nextSelectedId, saveDelay = 0) {
+  clearRandomPickAnimation();
   state.tree = nextTree;
   state.selectedId = deriveSelection(nextTree, nextSelectedId ?? state.selectedId);
   state.conflictState = null;
@@ -1017,6 +1079,7 @@ function commitTree(nextTree, nextSelectedId, saveDelay = 0) {
 }
 
 function applyDelete(nodeId) {
+  clearRandomPickAnimation();
   const result = deleteNode(state.tree, nodeId, state.selectedId);
   commitTree(result.tree, result.nextSelectedId, 0);
 }
@@ -1036,10 +1099,40 @@ function computeSidebarDropPosition(targetRow, clientY) {
   return "inside";
 }
 
+function hasRandomPickState() {
+  return Boolean(state.randomPick.highlightId || state.randomPick.pickedId);
+}
+
+function clearRandomPickAnimation({ shouldRender = false } = {}) {
+  randomPickGeneration += 1;
+  for (const timer of randomPickTimers) {
+    clearTimeout(timer);
+  }
+  randomPickTimers = [];
+  state.randomPick = createEmptyRandomPickState();
+  clearRandomPickDecorations();
+
+  if (shouldRender) {
+    render();
+  }
+}
+
+function scheduleRandomTimer(callback, delay) {
+  const timer = setTimeout(() => {
+    randomPickTimers = randomPickTimers.filter((nextTimer) => nextTimer !== timer);
+    callback();
+  }, delay);
+  randomPickTimers.push(timer);
+}
+
+function prefersReducedMotion() {
+  return Boolean(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+}
+
 function dismissTransientState() {
   state.importDialog = null;
   state.shortcutsDialog = false;
-  state.randomResult = null;
+  clearRandomPickAnimation();
 }
 
 function renderAndFocusComposer() {
@@ -1049,21 +1142,25 @@ function renderAndFocusComposer() {
 
 function selectNode(nodeId) {
   state.selectedId = deriveSelection(state.tree, nodeId);
+  state.outlineOpen = false;
   dismissTransientState();
   render();
 }
 
 function addRootNodeAndFocus() {
+  clearRandomPickAnimation();
   const node = createNode({
     title: "New Node",
     kind: "list",
   });
 
+  state.outlineOpen = false;
   commitTree(addRootNode(state.tree, node), node.id, 0);
   focusSelectedTitle();
 }
 
 function addChildNodeAndFocus() {
+  clearRandomPickAnimation();
   const selectedNode = getSelectedNode();
   if (!selectedNode) {
     addRootNodeAndFocus();
@@ -1078,21 +1175,142 @@ function addChildNodeAndFocus() {
   focusSelectedTitle();
 }
 
+function changeNodeWeight(nodeId, delta) {
+  clearRandomPickAnimation();
+  const node = findNode(state.tree, nodeId);
+  if (!node || !Number.isInteger(delta) || delta === 0) {
+    return;
+  }
+
+  const nextWeight = Math.max(1, Math.min(MAX_NODE_WEIGHT, (node.weight || 1) + delta));
+  if (nextWeight === node.weight) {
+    return;
+  }
+
+  state.tree = updateNodeWeight(state.tree, nodeId, nextWeight);
+  queueSave(0);
+}
+
+function getNodeWeight(node) {
+  return Number.isSafeInteger(node?.weight) && node.weight > 0 ? node.weight : 1;
+}
+
+function pickWeightedChild(children) {
+  const totalWeight = children.reduce((total, child) => total + getNodeWeight(child), 0);
+  let threshold = Math.random() * totalWeight;
+
+  for (const child of children) {
+    threshold -= getNodeWeight(child);
+    if (threshold < 0) {
+      return child;
+    }
+  }
+
+  return children[children.length - 1];
+}
+
+function finishRandomRowPick(sourceNodeId, pickedId, generation, onComplete) {
+  if (generation !== randomPickGeneration || state.selectedId !== sourceNodeId) {
+    return;
+  }
+
+  state.randomPick = {
+    highlightId: null,
+    pickedId,
+  };
+  render();
+
+  scheduleRandomTimer(() => {
+    if (generation !== randomPickGeneration) {
+      return;
+    }
+
+    state.randomPick = createEmptyRandomPickState();
+    onComplete?.();
+    render();
+  }, prefersReducedMotion() ? 120 : RANDOM_ROW_FLASH_MS);
+}
+
+function animateRandomRowPick(sourceNode, pickedNode, onComplete) {
+  clearRandomPickAnimation();
+  state.outlineOpen = false;
+
+  const childIds = sourceNode.children.map((child) => child.id);
+  if (childIds.length === 0) {
+    render();
+    return;
+  }
+
+  randomPickGeneration += 1;
+  const generation = randomPickGeneration;
+
+  if (prefersReducedMotion()) {
+    finishRandomRowPick(sourceNode.id, pickedNode.id, generation, onComplete);
+    return;
+  }
+
+  const sequence = childIds.length < 4 ? [...childIds, ...childIds] : childIds;
+  sequence.forEach((childId, index) => {
+    scheduleRandomTimer(() => {
+      if (generation !== randomPickGeneration || state.selectedId !== sourceNode.id) {
+        return;
+      }
+
+      state.randomPick = {
+        highlightId: childId,
+        pickedId: null,
+      };
+      render();
+    }, index * RANDOM_ROW_STEP_MS);
+  });
+
+  scheduleRandomTimer(
+    () => finishRandomRowPick(sourceNode.id, pickedNode.id, generation, onComplete),
+    sequence.length * RANDOM_ROW_STEP_MS,
+  );
+}
+
+function flashPickedRow(nodeId) {
+  clearRandomPickAnimation();
+  randomPickGeneration += 1;
+  const generation = randomPickGeneration;
+  state.randomPick = {
+    highlightId: null,
+    pickedId: nodeId,
+  };
+  render();
+
+  scheduleRandomTimer(() => {
+    if (generation !== randomPickGeneration) {
+      return;
+    }
+
+    state.randomPick = createEmptyRandomPickState();
+    render();
+  }, prefersReducedMotion() ? 120 : RANDOM_ROW_FLASH_MS);
+}
+
 function pickRandomChild(nodeId) {
   const selectedNode = findNode(state.tree, nodeId);
   if (!selectedNode || selectedNode.children.length === 0) {
     return;
   }
 
-  const pick = selectedNode.children[Math.floor(Math.random() * selectedNode.children.length)];
-  if (nodeHasChildren(pick)) {
+  const pick = pickWeightedChild(selectedNode.children);
+  const onlyLeafChild = pick.children.length === 1 && !nodeHasChildren(pick.children[0])
+    ? pick.children[0]
+    : null;
+
+  animateRandomRowPick(selectedNode, pick, () => {
+    if (!nodeHasChildren(pick)) {
+      return;
+    }
+
     state.selectedId = pick.id;
-  } else {
-    state.randomResult = {
-      message: pick.title,
-    };
-  }
-  render();
+    if (onlyLeafChild) {
+      flashPickedRow(onlyLeafChild.id);
+    }
+  });
 }
 
 function handleAction(target) {
@@ -1126,7 +1344,12 @@ function handleAction(target) {
       applyDelete(nodeId);
       return;
     }
+    case "change-weight": {
+      changeNodeWeight(nodeId, Number(actionSource.dataset.delta));
+      return;
+    }
     case "toggle-expand": {
+      clearRandomPickAnimation();
       state.tree = toggleNodeExpanded(state.tree, nodeId);
       render();
       queueSave(0, false);
@@ -1141,8 +1364,13 @@ function handleAction(target) {
       pickRandomChild(nodeId);
       return;
     }
-    case "dismiss-random-result": {
-      state.randomResult = null;
+    case "toggle-outline": {
+      state.outlineOpen = !state.outlineOpen;
+      render();
+      return;
+    }
+    case "close-outline": {
+      state.outlineOpen = false;
       render();
       return;
     }
@@ -1297,6 +1525,7 @@ async function importTree(mode) {
   }
 
   try {
+    clearRandomPickAnimation();
     const payload = JSON.parse(state.importDialog.text);
     const result = await request(`/api/import?mode=${mode}`, {
       method: "POST",
@@ -1370,15 +1599,21 @@ window.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (state.randomResult) {
+    if (hasRandomPickState()) {
       event.preventDefault();
-      state.randomResult = null;
+      clearRandomPickAnimation({ shouldRender: true });
+      return;
+    }
+
+    if (state.outlineOpen) {
+      event.preventDefault();
+      state.outlineOpen = false;
       render();
       return;
     }
   }
 
-  if (state.importDialog || state.randomResult || state.shortcutsDialog) {
+  if (state.importDialog || state.shortcutsDialog) {
     return;
   }
 
@@ -1400,9 +1635,7 @@ window.addEventListener("keydown", (event) => {
 
   if (commandKey && key === "1") {
     event.preventDefault();
-    state.selectedId = getFirstRootId(state.tree);
-    render();
-    focusTreeSelection();
+    setSelectionAndFocus(getFirstRootId(state.tree));
     return;
   }
 
@@ -1438,6 +1671,12 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowUp") {
     event.preventDefault();
     selectVisibleRow(-1);
+    return;
+  }
+
+  if (event.key === "ArrowLeft" && event.shiftKey) {
+    event.preventDefault();
+    moveSelectionToCurrentRoot();
     return;
   }
 
@@ -1481,7 +1720,7 @@ window.addEventListener("keydown", (event) => {
 
   if (key === "e") {
     event.preventDefault();
-    focusSelectedTitle();
+    moveSelectionToCurrentRoot();
     return;
   }
 
