@@ -1214,21 +1214,17 @@ function finishRandomRowPick(sourceNodeId, pickedId, generation, onComplete) {
     return;
   }
 
+  // Preserve picked highlight until a new random pick or manual clear
   state.randomPick = {
     highlightId: null,
     pickedId,
   };
   render();
 
-  scheduleRandomTimer(() => {
-    if (generation !== randomPickGeneration) {
-      return;
-    }
-
-    state.randomPick = createEmptyRandomPickState();
-    onComplete?.();
-    render();
-  }, prefersReducedMotion() ? 120 : RANDOM_ROW_FLASH_MS);
+  // Directly invoke completion logic without clearing highlight
+  if (onComplete) {
+    onComplete();
+  }
 }
 
 function animateRandomRowPick(sourceNode, pickedNode, onComplete) {

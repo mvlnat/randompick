@@ -12,7 +12,7 @@ The product scope, deploy shape, and interaction model in the rest of this docum
 
 ## Overview
 
-This project converts the native SwiftUI `WhatToDo` app into a web app deployed at `random.ziyang.li` on the existing Hetzner VM.
+This project converts the WhatToDo app into a web app deployed at `random.ziyang.li` on the existing Hetzner VM.
 
 The web version should preserve the current product's core value:
 
@@ -20,7 +20,7 @@ The web version should preserve the current product's core value:
 - fast item and list editing
 - drag-and-drop reordering
 - random selection from the current list
-- JSON import/export compatibility with the existing Swift app
+- JSON import/export compatibility
 
 The web version should visually align with `fsrs` and `ecommercestore`:
 
@@ -50,7 +50,7 @@ Unlike those apps, this one should use a lighter stack and deployment model.
 
 ## Current App Scope
 
-The Swift app currently provides:
+The app currently provides:
 
 - recursive tree of `TodoNode`
 - CRUD for lists and items
@@ -66,64 +66,46 @@ Important existing quirks worth fixing in the web version:
 - add behavior depends too much on current selection
 - drag state can get visually stuck
 
-## Recommended Stack
+## Actual Shipped Stack
 
-- Frontend: TypeScript, React, Vite
-- State management: React context + reducer
-- Drag and drop: `dnd-kit`
-- Backend: Go with `chi`
-- Persistence: SQLite via a pure-Go driver
-- Deployment: single Docker container on the shared VM
-- Edge routing: existing `fsrs` nginx edge using the shared Docker network
-- Access control: none for now
+The implemented app uses:
+- Node.js backend with `node:sqlite` for persistence
+- Vanilla JS frontend (no React/Vite)
+- SortableJS for drag-and-drop
+- Centralized plain JS state management
+- Single Docker container deployment
+- Open access with `fsrs` nginx routing
 
-## Why This Stack
-
-This keeps consistency with the existing repos without inheriting their weight.
-
-- React/Vite matches the frontend style and tooling already used in `fsrs` and `ecommercestore`.
-- Go keeps backend deployment simple and familiar.
-- SQLite is sufficient because this is a private single-user tool with small data volume.
-- A single container is enough because the app does not need a separate frontend service, internal nginx, or Postgres.
-- Avoiding app-level auth keeps the stack and edge config smaller.
+Why this stack?
+- Node.js avoids Go complexity for single-user tools
+- Vanilla modules skip build steps
+- SortableJS simplifies drag/drop setup
+- SQLite matches in-memory tree model
+- Single container reduces ops overhead
 
 ## High-Level Architecture
 
-The app should be split in source code, but deployed as one runtime service.
+The app is split into small focused files, deployed as one runtime service:
 
 ```text
 randompick/
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── features/tree/
-│   │   ├── features/detail/
-│   │   ├── features/import-export/
-│   │   ├── lib/
-│   │   ├── styles/
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── package.json
-│   └── vite.config.ts
 ├── backend/
-│   ├── cmd/server/main.go
-│   ├── internal/api/
-│   ├── internal/model/
-│   ├── internal/store/
-│   └── go.mod
+│   ├── public/
+│   │   ├── app.js          # Frontend ES module with all UI logic
+│   │   ├── styles.css      # All app styles
+│   │   └── index.html      # Shell HTML
+│   ├── server.js           # Node.js backend serving API + static files
+│   ├── state-store.js      # SQLite persistence layer
+│   └── server.test.js      # Backend tests
+├── shared/
+│   ├── tree.js             # Tree mutation/query functions (shared frontend/backend)
+│   └── tree.test.js        # Tree logic tests
+├── data/                   # SQLite volume mount
+├── scripts/                # Deploy/release scripts
 ├── Dockerfile
 ├── docker-compose.prod.yml
-├── scripts/deploy-randompick.sh
 └── design.md
 ```
-
-Deployment model:
-
-- Vite builds static frontend assets.
-- Go serves the API and the compiled frontend assets.
-- SQLite database file is stored on a mounted Docker volume.
-- The container joins the existing `shared-edge` Docker network.
-- The existing public nginx edge routes `random.ziyang.li` to this app.
 
 ## Persistence Model
 
@@ -173,32 +155,37 @@ Mitigation:
 
 That is enough for a personal tool.
 
-## Internal Frontend Data Model
+## Data Model
 
-Use an explicit internal node shape instead of overloading `children == nil`.
+Explicit node shape used consistently across frontend and backend:
 
-```ts
-type NodeKind = "list" | "item";
+```js
+// Node kinds
+export const NODE_KINDS = ['list', 'item'];
 
-type TreeNode = {
-  id: string;
-  title: string;
-  kind: NodeKind;
-  isExpanded: boolean;
-  children: TreeNode[];
-};
+export function createNode({ title, kind = 'item', weight = 1 } = {}) {
+  return {
+    id: crypto.randomUUID(),
+    title,
+    kind,
+    isExpanded: false,
+    children: kind === 'list' ? [] : undefined,
+    weight: Math.max(1, Math.min(10, weight)),
+  };
+}
 ```
 
 Rules:
 
-- `list` nodes may contain children
-- `item` nodes never contain children
-- imported Swift JSON is migrated into this structure on load/import
-- exported JSON should remain compatible with the current Swift app shape
+- `list` nodes have `children: []` and may contain other nodes
+- `item` nodes have `children: undefined` and never contain other nodes
+- `weight` (1-10) controls probability in random pick
+- imported JSON is migrated into this structure on load/import
+- exported JSON remains compatible
 
 ## Import / Export Compatibility
 
-The web app must support the existing Swift JSON export format directly.
+The web app must support the existing JSON export format directly.
 
 Import mapping:
 
@@ -272,50 +259,37 @@ The app should feel closer to a native productivity tool than a generic SaaS das
 
 ## Drag-and-Drop Requirements
 
-Drag-and-drop reorder is a required v1 feature.
+Drag-and-drop reorder is implemented using SortableJS.
 
 ### Sidebar Tree DnD
 
-Required operations:
-
+Operations supported:
 - reorder root lists
 - reorder siblings within the same parent
 - move a node into another list
 - move a nested node back to root
 - prevent dropping onto self or descendants
 
-Recommended implementation:
-
-- use `dnd-kit`
-- represent the visible tree as a flattened list during drag
-- compute drop target and intent:
-  - above target
-  - inside target
-  - below target
-- show clear drop indicators
-
-Behavior notes:
-
-- only `list` nodes can accept `inside` drops
+Implementation details:
+- SortableJS with fallback for touch devices
+- visible tree flattened as list during drag
+- drop indicators: above, inside, below target
+- only `list` nodes accept `inside` drops
 - `item` nodes only support above/below reorder
 - dropping onto a collapsed list can still nest inside it
-- after nesting into a list, that list should auto-expand
 
 ### Detail Pane DnD
 
-Required operations:
+Operations supported:
+- reorder items within the selected list
 
-- reorder items and sublists within the selected list
-
-Recommended behavior:
-
-- drag handle shown on row hover or always visible on desktop
-- keyboard and touch fallback actions remain available for non-pointer usage
+Implementation details:
+- drag handle always visible on desktop
+- keyboard and touch fallback actions available
 
 ### Mobile Fallback
 
 Desktop is the primary target. On mobile:
-
 - keep simple drag reorder where practical
 - provide explicit move actions if tree drag becomes too awkward
 
@@ -364,6 +338,16 @@ Rules:
 - adding a root list should select it
 - adding a child should keep the current list selected unless the user explicitly navigates into the child
 - the UI must support no selection safely
+
+## Random Pick Behavior
+
+Weighted random selection with visual feedback:
+
+- Weighted selection: Items with higher weight (1-10) have proportionally higher chance of being picked
+- Visual animation: Cycles through child rows at 90ms intervals before landing on final pick
+- Highlight states: `is-random-highlighted` (during animation), `is-random-picked` (final, 900ms)
+- Auto-open lists: If the picked node is a list (has children), automatically select it to show its children
+- Reduced motion: Respects `prefers-reduced-motion` and skips animation
 
 ## API Surface
 
@@ -414,7 +398,7 @@ Responses:
 
 ### GET /api/export
 
-- returns Swift-compatible JSON document
+- returns JSON document
 
 ## Backend Responsibilities
 
@@ -558,7 +542,7 @@ If rendering becomes noisy with larger trees:
 
 ### Manual Verification
 
-- import existing Swift export
+- import existing export
 - drag reorder roots, siblings, and nested nodes
 - reorder children in the detail pane
 - random pick on list with items and sublists
@@ -608,7 +592,7 @@ If rendering becomes noisy with larger trees:
 ## Open Questions
 
 - Should the initial web version support only one root document, or named documents later?
-- Should random picking enter sublists automatically when a picked child is itself a list, matching the Swift app?
+- Should random picking enter sublists automatically when a picked child is itself a list?
 - Should theme preference live only in browser storage, or also in server state for cross-device consistency?
 
 ## Final Recommendation
