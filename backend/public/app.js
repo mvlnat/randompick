@@ -1298,11 +1298,9 @@ function pickRandomChild(nodeId) {
     : null;
 
   animateRandomRowPick(selectedNode, pick, () => {
-    if (!nodeHasChildren(pick)) {
-      return;
-    }
-
     state.selectedId = pick.id;
+    // Render to reflect the new selection (open the picked node)
+    render();
     if (onlyLeafChild) {
       flashPickedRow(onlyLeafChild.id);
     }
