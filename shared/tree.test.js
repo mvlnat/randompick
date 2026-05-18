@@ -8,10 +8,12 @@ import {
   deleteNode,
   exportToSwiftTree,
   findNode,
+  MAX_NODE_URL_LENGTH,
   mergeTrees,
   moveNodeRelative,
   moveNodeToParent,
   normalizeImportedTree,
+  updateNodeUrl,
   updateNodeWeight,
   validateInternalTree,
 } from "./tree.js";
@@ -55,6 +57,26 @@ test("normalizeImportedTree defaults and preserves node weights", () => {
   assert.equal(tree[0].children[1].weight, 4);
 });
 
+test("normalizeImportedTree defaults and preserves node URLs", () => {
+  const tree = normalizeImportedTree([
+    {
+      id: "root",
+      title: "Default",
+      isExpanded: true,
+      url: " https://example.com/path ",
+      children: [
+        {
+          id: "plain",
+          title: "Plain",
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(tree[0].url, "https://example.com/path");
+  assert.equal(tree[0].children[0].url, "");
+});
+
 test("validateInternalTree rejects invalid node weights", () => {
   assert.throws(
     () => validateInternalTree([
@@ -82,6 +104,36 @@ test("validateInternalTree rejects invalid node weights", () => {
       },
     ]),
     /Node weight must be an integer from 1 to 99\./,
+  );
+});
+
+test("validateInternalTree rejects invalid node URLs", () => {
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        url: 42,
+        kind: "item",
+        isExpanded: false,
+        children: [],
+      },
+    ]),
+    /Node URL must be a string\./,
+  );
+
+  assert.throws(
+    () => validateInternalTree([
+      {
+        id: "bad",
+        title: "Bad",
+        url: `https://example.com/${"x".repeat(MAX_NODE_URL_LENGTH)}`,
+        kind: "item",
+        isExpanded: false,
+        children: [],
+      },
+    ]),
+    /Node URL must be 2048 characters or fewer\./,
   );
 });
 
@@ -167,6 +219,13 @@ test("updateNodeWeight changes a node weight", () => {
   const tree = updateNodeWeight([item], item.id, 3);
 
   assert.equal(findNode(tree, item.id).weight, 3);
+});
+
+test("updateNodeUrl changes a node URL", () => {
+  const item = createNode({ title: "Leaf", kind: "item" });
+  const tree = updateNodeUrl([item], item.id, " example.com ");
+
+  assert.equal(findNode(tree, item.id).url, "example.com");
 });
 
 test("add helpers regenerate duplicate inserted node IDs", () => {
@@ -285,6 +344,24 @@ test("exportToSwiftTree includes non-default weights", () => {
       isExpanded: false,
       title: "Leaf",
       weight: 3,
+    },
+  ]);
+});
+
+test("exportToSwiftTree includes node URLs", () => {
+  const item = createNode({
+    title: "Leaf",
+    kind: "item",
+    url: "https://example.com",
+  });
+  const exported = exportToSwiftTree([item]);
+
+  assert.deepEqual(exported, [
+    {
+      id: item.id,
+      isExpanded: false,
+      title: "Leaf",
+      url: "https://example.com",
     },
   ]);
 });

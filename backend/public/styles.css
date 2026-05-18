@@ -417,6 +417,7 @@ select {
 
 .detail-title-input,
 .detail-input,
+.detail-url-input,
 .composer-input {
   width: 100%;
   min-width: 0;
@@ -445,6 +446,24 @@ select {
   border-bottom-color: var(--border-strong);
 }
 
+.detail-url-input {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.detail-url-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.detail-link-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 560px) auto;
+  gap: 6px;
+  align-items: center;
+  max-width: 760px;
+  margin-top: 6px;
+}
+
 .detail-header-actions {
   display: flex;
   gap: 6px;
@@ -464,7 +483,7 @@ select {
 
 .detail-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(150px, 1.1fr) minmax(150px, 0.9fr) auto auto auto auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -590,7 +609,7 @@ select {
 .composer {
   margin-top: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 320px) auto;
   gap: 6px;
 }
 
@@ -869,6 +888,10 @@ select {
     min-height: 30px;
   }
 
+  .detail-link-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .detail-header-actions .button,
   .composer .button {
     min-height: 30px;
@@ -919,8 +942,29 @@ select {
     padding: 1px 3px;
   }
 
+  .detail-row .detail-input,
+  .detail-row .detail-url-input {
+    grid-column: 2 / -1;
+  }
+
+  .detail-row .weight-control {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .detail-row .button[data-action="open-url"] {
+    grid-column: 3;
+  }
+
+  .detail-row .button[data-action="open-node"] {
+    grid-column: 4;
+  }
+
+  .detail-row .button[data-action="delete-node"] {
+    grid-column: 5;
+  }
+
   .detail-row .button {
-    grid-column: auto;
     justify-self: auto;
     min-height: 26px;
     padding: 0 7px;
@@ -947,6 +991,7 @@ select {
   }
 
   .detail-input,
+  .detail-url-input,
   .composer-input {
     min-height: 28px;
     padding: 0 8px;
@@ -968,13 +1013,27 @@ select {
     gap: 3px;
   }
 
+  .detail-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-link-row .button {
+    justify-self: start;
+  }
+
+  .detail-row .button[data-action="open-url"],
   .detail-row .button[data-action="open-node"],
   .detail-row .button[data-action="delete-node"] {
-    width: 28px;
-    min-width: 28px;
+    width: 32px;
+    min-width: 32px;
     padding: 0;
     overflow: hidden;
     font-size: 0;
+  }
+
+  .detail-row .button[data-action="open-url"]::before {
+    content: "Web";
+    font-size: 11px;
   }
 
   .detail-row .button[data-action="open-node"]::before {

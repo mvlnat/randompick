@@ -10,6 +10,7 @@ import {
   findParentId,
   findPath,
   flattenVisibleTree,
+  MAX_NODE_URL_LENGTH,
   MAX_NODE_WEIGHT,
   getFirstRootId,
   moveNodeRelative,
@@ -17,6 +18,7 @@ import {
   moveNodeToParent,
   toggleNodeExpanded,
   updateNodeTitle,
+  updateNodeUrl,
   updateNodeWeight,
 } from "/shared/tree.js";
 
@@ -48,6 +50,7 @@ const state = {
   saveStatus: "loading",
   errorMessage: "",
   composerTitle: "",
+  composerUrl: "",
   importDialog: null,
   shortcutsDialog: false,
   randomPick: createEmptyRandomPickState(),
@@ -127,6 +130,29 @@ function nodeHasChildren(node) {
   return Array.isArray(node?.children) && node.children.length > 0;
 }
 
+function getWebsiteHref(rawUrl) {
+  const trimmed = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname) {
+      return null;
+    }
+
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function nodeHasWebsite(node) {
+  return Boolean(getWebsiteHref(node?.url));
+}
+
 function isDropInvalid(nodeId, dragId = state.drag.nodeId) {
   if (!dragId) {
     return false;
@@ -170,6 +196,21 @@ function getDataSelector(value) {
   return String(value).replace(/[\0-\x1F\x7F"\\]/g, (character) => {
     const codePoint = character.charCodeAt(0).toString(16);
     return `\\${codePoint} `;
+  });
+}
+
+function syncWebsiteButtons(nodeId) {
+  if (!nodeId) {
+    return;
+  }
+
+  const hasWebsite = nodeHasWebsite(findNode(state.tree, nodeId));
+  app.querySelectorAll(
+    `[data-action="open-url"][data-node-id="${getDataSelector(nodeId)}"]`,
+  ).forEach((element) => {
+    if (element instanceof HTMLButtonElement) {
+      element.disabled = !hasWebsite;
+    }
   });
 }
 
@@ -621,11 +662,13 @@ function renderDetailContent(selectedNode) {
   const children = selectedNode.children;
   const selectedNodeId = escapeAttribute(selectedNode.id);
   const parentId = findParentId(state.tree, selectedNode.id);
+  const selectedHasWebsite = nodeHasWebsite(selectedNode);
   const rows = children.length
     ? children
         .map((child, index) => {
           const childId = escapeAttribute(child.id);
           const childWeight = child.weight || 1;
+          const childHasWebsite = nodeHasWebsite(child);
           const rowClasses = [
             "detail-row",
             state.randomPick.highlightId === child.id ? "is-random-highlighted" : "",
@@ -657,6 +700,15 @@ function renderDetailContent(selectedNode) {
                 aria-label="Child node title"
                 value="${escapeHtml(child.title)}"
               />
+              <input
+                class="detail-url-input"
+                data-action="edit-url"
+                data-node-id="${childId}"
+                aria-label="Website link for ${escapeHtml(child.title)}"
+                placeholder="Website link"
+                maxlength="${MAX_NODE_URL_LENGTH}"
+                value="${escapeHtml(child.url)}"
+              />
               <div class="weight-control" role="group" aria-label="Weight for ${escapeHtml(child.title)}">
                 <button
                   class="icon-button weight-button"
@@ -678,6 +730,7 @@ function renderDetailContent(selectedNode) {
                   type="button"
                 >+</button>
               </div>
+              <button class="button button-ghost" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open website link for ${escapeHtml(child.title)}" type="button">Website</button>
               <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" type="button">Open</button>
               <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" type="button">Delete</button>
             </div>
@@ -705,6 +758,24 @@ function renderDetailContent(selectedNode) {
               value="${escapeHtml(selectedNode.title)}"
             />
           </div>
+          <div class="detail-link-row">
+            <input
+              class="detail-url-input detail-link-input"
+              data-action="edit-url"
+              data-node-id="${selectedNodeId}"
+              aria-label="Selected node website link"
+              placeholder="Website link"
+              maxlength="${MAX_NODE_URL_LENGTH}"
+              value="${escapeHtml(selectedNode.url)}"
+            />
+            <button
+              class="button button-ghost"
+              data-action="open-url"
+              data-node-id="${selectedNodeId}"
+              ${selectedHasWebsite ? "" : "disabled"}
+              type="button"
+            >Open Website</button>
+          </div>
           <p class="detail-meta">
             ${children.length} child ${children.length === 1 ? "node" : "nodes"}
           </p>
@@ -730,6 +801,14 @@ function renderDetailContent(selectedNode) {
           aria-label="New child node title"
           placeholder="Add a node..."
           value="${escapeHtml(state.composerTitle)}"
+        />
+        <input
+          class="composer-input composer-url-input"
+          name="composerUrl"
+          aria-label="New child website link"
+          placeholder="Website link (optional)"
+          maxlength="${MAX_NODE_URL_LENGTH}"
+          value="${escapeHtml(state.composerUrl)}"
         />
         <button class="button button-primary" type="submit">Add</button>
       </form>
@@ -1191,6 +1270,26 @@ function changeNodeWeight(nodeId, delta) {
   queueSave(0);
 }
 
+function openWebsiteForNode(nodeId) {
+  const node = findNode(state.tree, nodeId);
+  const href = getWebsiteHref(node?.url);
+
+  if (!href) {
+    state.errorMessage = "Enter a valid website link before opening it.";
+    render();
+    return;
+  }
+
+  state.errorMessage = "";
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function getNodeWeight(node) {
   return Number.isSafeInteger(node?.weight) && node.weight > 0 ? node.weight : 1;
 }
@@ -1349,6 +1448,10 @@ function handleAction(target) {
       queueSave(0, false);
       return;
     }
+    case "open-url": {
+      openWebsiteForNode(nodeId);
+      return;
+    }
     case "select-node":
     case "open-node": {
       selectNode(nodeId);
@@ -1442,8 +1545,20 @@ function handleInput(event) {
     return;
   }
 
+  if (target.matches('[data-action="edit-url"]')) {
+    state.tree = updateNodeUrl(state.tree, target.dataset.nodeId, target.value);
+    syncWebsiteButtons(target.dataset.nodeId);
+    state.saveStatus = "dirty";
+    queueSave(600, false, false);
+    return;
+  }
+
   if (target.name === "composerTitle") {
     state.composerTitle = target.value;
+  }
+
+  if (target.name === "composerUrl") {
+    state.composerUrl = target.value;
   }
 }
 
@@ -1454,6 +1569,13 @@ function handleChange(event) {
   }
 
   if (target.matches('[data-action="edit-title"]')) {
+    if (state.saveStatus === "dirty") {
+      queueSave(150, false);
+    }
+    return;
+  }
+
+  if (target.matches('[data-action="edit-url"]')) {
     if (state.saveStatus === "dirty") {
       queueSave(150, false);
     }
@@ -1506,10 +1628,12 @@ function handleSubmit(event) {
 
   const nextNode = createNode({
     title,
+    url: state.composerUrl,
   });
 
   commitTree(addChildNode(state.tree, selectedNode.id, nextNode), selectedNode.id, 0);
   state.composerTitle = "";
+  state.composerUrl = "";
   renderAndFocusComposer();
 }
 

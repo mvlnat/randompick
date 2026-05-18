@@ -1,5 +1,6 @@
 export const DEFAULT_NODE_WEIGHT = 1;
 export const MAX_NODE_WEIGHT = 99;
+export const MAX_NODE_URL_LENGTH = 2048;
 
 const VALID_KINDS = new Set(["list", "item"]);
 
@@ -45,6 +46,27 @@ function normalizeWeight(value) {
   }
 
   return value;
+}
+
+function normalizeUrl(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value !== "string") {
+    throw new TreeValidationError("Node URL must be a string.");
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_NODE_URL_LENGTH) {
+    throw new TreeValidationError(`Node URL must be ${MAX_NODE_URL_LENGTH} characters or fewer.`);
+  }
+
+  if (/[\0-\x1F\x7F]/.test(trimmed)) {
+    throw new TreeValidationError("Node URL cannot contain control characters.");
+  }
+
+  return trimmed;
 }
 
 function reserveNodeId(rawId, seenIds) {
@@ -98,6 +120,7 @@ function normalizeNode(raw, seenIds = new Set()) {
     id,
     title: normalizeTitle(raw.title),
     weight: normalizeWeight(raw.weight),
+    url: normalizeUrl(raw.url),
     kind,
     isExpanded: kind === "list" ? Boolean(raw.isExpanded) : false,
     children,
@@ -133,6 +156,7 @@ function exportNodeToSwift(node) {
     isExpanded: Boolean(node.isExpanded),
     title: node.title,
     ...(node.weight !== DEFAULT_NODE_WEIGHT ? { weight: node.weight } : {}),
+    ...(node.url ? { url: node.url } : {}),
   };
 
   if (node.kind === "list" || node.children.length > 0) {
@@ -214,11 +238,17 @@ export function cloneTree(tree) {
   return structuredClone(tree);
 }
 
-export function createNode({ title = "", kind = "item", weight = DEFAULT_NODE_WEIGHT } = {}) {
+export function createNode({
+  title = "",
+  kind = "item",
+  weight = DEFAULT_NODE_WEIGHT,
+  url = "",
+} = {}) {
   return normalizeNode({
     id: generateId(),
     title,
     weight,
+    url,
     kind,
     isExpanded: kind === "list",
     children: kind === "list" ? [] : undefined,
@@ -331,6 +361,12 @@ export function updateNodeTitle(tree, nodeId, title) {
 export function updateNodeWeight(tree, nodeId, weight) {
   return updateNode(tree, nodeId, (node) => {
     node.weight = normalizeWeight(weight);
+  });
+}
+
+export function updateNodeUrl(tree, nodeId, url) {
+  return updateNode(tree, nodeId, (node) => {
+    node.url = normalizeUrl(url);
   });
 }
 
