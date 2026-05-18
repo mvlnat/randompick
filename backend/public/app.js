@@ -580,7 +580,7 @@ function renderSidebarRows(rows) {
     return `
       <div class="sidebar-empty">
         <p>No nodes yet.</p>
-        <p>Create a root node or import a JSON export.</p>
+        <p>Create a root or import JSON.</p>
       </div>
     `;
   }
@@ -650,7 +650,7 @@ function renderDetailContent(selectedNode) {
     return `
       <section class="detail-card empty-state">
         <h2>No selection</h2>
-        <p>Select a node from the sidebar.</p>
+        <p>Select a node from the outline.</p>
       </section>
     `;
   }
@@ -705,7 +705,7 @@ function renderDetailContent(selectedNode) {
                 data-action="edit-url"
                 data-node-id="${childId}"
                 aria-label="Website link for ${escapeHtml(child.title)}"
-                placeholder="Website link"
+                placeholder="Link"
                 maxlength="${MAX_NODE_URL_LENGTH}"
                 value="${escapeHtml(child.url)}"
               />
@@ -730,7 +730,7 @@ function renderDetailContent(selectedNode) {
                   type="button"
                 >+</button>
               </div>
-              <button class="button button-ghost" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open website link for ${escapeHtml(child.title)}" type="button">Website</button>
+              <button class="button button-ghost" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open link for ${escapeHtml(child.title)}" type="button">Open link</button>
               <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" type="button">Open</button>
               <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" type="button">Delete</button>
             </div>
@@ -739,8 +739,8 @@ function renderDetailContent(selectedNode) {
         .join("")
     : `
         <div class="empty-list">
-          <p>This node has no child nodes yet.</p>
-          <p>Add one below or drop another node into it.</p>
+          <p>No child nodes yet.</p>
+          <p>Add one below or drop a node here.</p>
         </div>
       `;
 
@@ -764,7 +764,7 @@ function renderDetailContent(selectedNode) {
               data-action="edit-url"
               data-node-id="${selectedNodeId}"
               aria-label="Selected node website link"
-              placeholder="Website link"
+              placeholder="Link"
               maxlength="${MAX_NODE_URL_LENGTH}"
               value="${escapeHtml(selectedNode.url)}"
             />
@@ -774,7 +774,7 @@ function renderDetailContent(selectedNode) {
               data-node-id="${selectedNodeId}"
               ${selectedHasWebsite ? "" : "disabled"}
               type="button"
-            >Open Website</button>
+            >Open link</button>
           </div>
           <p class="detail-meta">
             ${children.length} child ${children.length === 1 ? "node" : "nodes"}
@@ -783,10 +783,10 @@ function renderDetailContent(selectedNode) {
         <div class="detail-header-actions">
           ${
             parentId
-              ? `<button class="button button-ghost" data-action="select-node" data-node-id="${escapeAttribute(parentId)}" type="button">Back to Parent</button>`
+              ? `<button class="button button-ghost" data-action="select-node" data-node-id="${escapeAttribute(parentId)}" type="button">Back to parent</button>`
               : ""
           }
-          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNodeId}" ${children.length === 0 ? "disabled" : ""} type="button">Pick Random</button>
+          <button class="button button-primary" data-action="pick-random" data-node-id="${selectedNodeId}" ${children.length === 0 ? "disabled" : ""} type="button">Pick random</button>
         </div>
       </div>
 
@@ -799,14 +799,14 @@ function renderDetailContent(selectedNode) {
           class="composer-input"
           name="composerTitle"
           aria-label="New child node title"
-          placeholder="Add a node..."
+          placeholder="Add a node"
           value="${escapeHtml(state.composerTitle)}"
         />
         <input
           class="composer-input composer-url-input"
           name="composerUrl"
           aria-label="New child website link"
-          placeholder="Website link (optional)"
+          placeholder="Link (optional)"
           maxlength="${MAX_NODE_URL_LENGTH}"
           value="${escapeHtml(state.composerUrl)}"
         />
@@ -825,10 +825,10 @@ function renderImportDialog() {
     <div class="modal-backdrop" data-action="close-import-dialog">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <h2 id="import-title">Import ${escapeHtml(state.importDialog.fileName)}</h2>
-        <p>The file is loaded. Choose whether to replace the current document or merge the imported roots into it.</p>
+        <p>The file is loaded. Replace this list file or add the imported roots to it.</p>
         <div class="modal-actions">
-          <button class="button button-primary" data-action="confirm-import" data-mode="replace" data-autofocus type="button">Replace Current Data</button>
-          <button class="button button-ghost" data-action="confirm-import" data-mode="merge" type="button">Merge Imported Roots</button>
+          <button class="button button-primary" data-action="confirm-import" data-mode="replace" data-autofocus type="button">Replace current data</button>
+          <button class="button button-ghost" data-action="confirm-import" data-mode="merge" type="button">Merge imported roots</button>
           <button class="button button-ghost" data-action="close-import-dialog" type="button">Cancel</button>
         </div>
       </div>
@@ -864,7 +864,7 @@ function renderShortcutsDialog() {
     <div class="modal-backdrop" data-action="close-shortcuts-dialog">
       <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
         <div class="modal-heading">
-          <h2 id="shortcuts-title">Keyboard Shortcuts</h2>
+          <h2 id="shortcuts-title">Keyboard shortcuts</h2>
           <button class="button button-ghost" data-action="close-shortcuts-dialog" data-autofocus type="button">Close</button>
         </div>
         <div class="shortcut-sections">
@@ -917,8 +917,8 @@ function renderConflictBanner() {
     <div class="banner banner-warning" role="alert">
       <p>Your local copy differs from a newer server version.</p>
       <div class="banner-actions">
-        <button class="button button-primary" data-action="reload-server-state" type="button">Reload Server Copy</button>
-        <button class="button button-ghost" data-action="overwrite-server-state" type="button">Overwrite With Local Copy</button>
+        <button class="button button-primary" data-action="reload-server-state" type="button">Reload server copy</button>
+        <button class="button button-ghost" data-action="overwrite-server-state" type="button">Overwrite with local copy</button>
       </div>
     </div>
   `;
@@ -942,8 +942,8 @@ function render() {
             aria-controls="outline-panel"
             aria-expanded="${state.outlineOpen ? "true" : "false"}"
             type="button"
-          >${state.outlineOpen ? "Hide Nodes" : "Nodes"}</button>
-          <button class="button button-ghost" data-action="add-root-node" type="button">New Root</button>
+          >${state.outlineOpen ? "Hide nodes" : "Nodes"}</button>
+          <button class="button button-ghost" data-action="add-root-node" type="button">New root</button>
           <button class="button button-ghost" data-action="trigger-import" type="button">Import</button>
           <button class="button button-ghost" data-action="export-tree" type="button">Export</button>
           <button class="button button-ghost" data-action="open-shortcuts-dialog" type="button">Shortcuts</button>
