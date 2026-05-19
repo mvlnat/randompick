@@ -612,7 +612,7 @@ textarea {
 
 .detail-row {
   display: grid;
-  grid-template-columns: auto minmax(150px, 1.1fr) minmax(150px, 0.9fr) auto auto auto auto;
+  grid-template-columns: auto auto minmax(150px, 1.1fr) minmax(150px, 0.9fr) auto auto auto auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -675,6 +675,17 @@ textarea {
   color: var(--text-tertiary);
   user-select: none;
   cursor: grab;
+}
+
+.row-move-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.row-move-button {
+  width: 20px;
+  height: 20px;
 }
 
 .weight-control {
@@ -1082,7 +1093,7 @@ textarea {
   }
 
   .detail-row {
-    grid-template-columns: 16px minmax(0, 1fr) auto auto auto;
+    grid-template-columns: 16px 40px minmax(0, 1fr) auto auto auto;
     gap: 4px;
     min-height: 28px;
     padding: 1px 3px;
@@ -1090,24 +1101,24 @@ textarea {
 
   .detail-row .detail-input,
   .detail-row .detail-url-input {
-    grid-column: 2 / -1;
+    grid-column: 3 / -1;
   }
 
   .detail-row .weight-control {
-    grid-column: 2;
+    grid-column: 3;
     justify-self: start;
   }
 
   .detail-row .button[data-action="open-url"] {
-    grid-column: 3;
-  }
-
-  .detail-row .button[data-action="open-node"] {
     grid-column: 4;
   }
 
-  .detail-row .button[data-action="delete-node"] {
+  .detail-row .button[data-action="open-node"] {
     grid-column: 5;
+  }
+
+  .detail-row .button[data-action="delete-node"] {
+    grid-column: 6;
   }
 
   .detail-row .button {
@@ -1120,6 +1131,11 @@ textarea {
   .drag-handle {
     width: 16px;
     height: 16px;
+  }
+
+  .row-move-button {
+    width: 18px;
+    height: 18px;
   }
 
   .weight-control {
@@ -1160,7 +1176,7 @@ textarea {
 
 @media (max-width: 430px) {
   .detail-row {
-    grid-template-columns: 16px minmax(0, 1fr) auto auto auto;
+    grid-template-columns: 16px 36px minmax(0, 1fr) auto auto auto;
     gap: 3px;
   }
 
@@ -1199,6 +1215,11 @@ textarea {
 
   .weight-control {
     grid-template-columns: 16px minmax(16px, auto) minmax(28px, auto) 16px;
+  }
+
+  .row-move-button {
+    width: 17px;
+    height: 17px;
   }
 
   .weight-button {

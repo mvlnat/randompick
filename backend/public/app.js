@@ -871,6 +871,26 @@ function renderDetailContent(selectedNode) {
                 aria-label="Drag to reorder ${escapeHtml(child.title)}"
                 type="button"
               >⋮⋮</button>
+              <div class="row-move-control" role="group" aria-label="Move ${escapeHtml(child.title)}">
+                <button
+                  class="icon-button row-move-button"
+                  data-action="move-node"
+                  data-node-id="${childId}"
+                  data-delta="-1"
+                  ${index === 0 ? "disabled" : ""}
+                  aria-label="Move ${escapeHtml(child.title)} up"
+                  type="button"
+                >↑</button>
+                <button
+                  class="icon-button row-move-button"
+                  data-action="move-node"
+                  data-node-id="${childId}"
+                  data-delta="1"
+                  ${index === children.length - 1 ? "disabled" : ""}
+                  aria-label="Move ${escapeHtml(child.title)} down"
+                  type="button"
+                >↓</button>
+              </div>
               <input
                 class="detail-input"
                 data-action="edit-title"
@@ -1068,6 +1088,8 @@ function renderShortcutsDialog() {
               ${renderShortcutRow(["N"], "Add child to selection")}
               ${renderShortcutRow(["Shift", "N"], "Add root node")}
               ${renderShortcutRow(["/"], "Focus add-child field")}
+              ${renderShortcutRow(["Shift", "Up"], "Move selected node up")}
+              ${renderShortcutRow(["Shift", "Down"], "Move selected node down")}
               ${renderShortcutRow(["Delete"], "Delete selected node")}
               ${renderShortcutRow([modifier, "Z"], "Undo deleted node")}
               ${renderShortcutRow([modifier, "S"], "Save now")}
@@ -1525,6 +1547,28 @@ function changeNodeWeight(nodeId, delta) {
   queueSave(0);
 }
 
+function moveNodeAmongSiblings(nodeId, delta, nextSelectedId = nodeId) {
+  if (!nodeId || !Number.isInteger(delta) || delta === 0) {
+    return false;
+  }
+
+  const parentId = findParentId(state.tree, nodeId);
+  const siblings = parentId ? findNode(state.tree, parentId)?.children : state.tree;
+  if (!siblings) {
+    return false;
+  }
+
+  const currentIndex = siblings.findIndex((node) => node.id === nodeId);
+  const targetNode = siblings[currentIndex + delta];
+  if (currentIndex === -1 || !targetNode) {
+    return false;
+  }
+
+  const position = delta < 0 ? "above" : "below";
+  commitTree(moveNodeRelative(state.tree, nodeId, targetNode.id, position), nextSelectedId, 0);
+  return true;
+}
+
 function openWebsiteForNode(nodeId) {
   const node = findNode(state.tree, nodeId);
   const href = getWebsiteHref(node?.url);
@@ -1694,6 +1738,11 @@ function handleAction(target) {
     }
     case "change-weight": {
       changeNodeWeight(nodeId, Number(actionSource.dataset.delta));
+      return;
+    }
+    case "move-node": {
+      const keepSelectedId = state.selectedId;
+      moveNodeAmongSiblings(nodeId, Number(actionSource.dataset.delta), keepSelectedId);
       return;
     }
     case "toggle-expand": {
@@ -2122,12 +2171,24 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
+    if (event.shiftKey) {
+      moveNodeAmongSiblings(state.selectedId, 1);
+      focusTreeSelection();
+      return;
+    }
+
     selectVisibleRow(1);
     return;
   }
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
+    if (event.shiftKey) {
+      moveNodeAmongSiblings(state.selectedId, -1);
+      focusTreeSelection();
+      return;
+    }
+
     selectVisibleRow(-1);
     return;
   }
