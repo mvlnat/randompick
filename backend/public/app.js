@@ -6,6 +6,7 @@ import {
   createNode,
   deleteNode,
   deriveSelection,
+  duplicateNode,
   exportToSwiftTree,
   findNode,
   findParentId,
@@ -944,6 +945,7 @@ function renderDetailContent(selectedNode) {
               </div>
               <button class="icon-button row-action-button" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open link for ${escapeHtml(child.title)}" title="Open link" type="button">↗</button>
               <button class="icon-button row-action-button" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" title="Open node" type="button">→</button>
+              <button class="icon-button row-action-button" data-action="duplicate-node" data-node-id="${childId}" aria-label="Duplicate ${escapeHtml(child.title)}" title="Duplicate" type="button">⧉</button>
               <button class="icon-button row-action-button row-action-danger" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" title="Delete" type="button">×</button>
             </div>
           `;
@@ -994,6 +996,7 @@ function renderDetailContent(selectedNode) {
           </p>
         </div>
         <div class="detail-header-actions">
+          <button class="button button-ghost" data-action="duplicate-node" data-node-id="${selectedNodeId}" type="button">Duplicate</button>
           ${
             parentId
               ? `<button class="button button-ghost" data-action="select-node" data-node-id="${escapeAttribute(parentId)}" type="button">Back to parent</button>`
@@ -1102,6 +1105,7 @@ function renderShortcutsDialog() {
               ${renderShortcutRow(["N"], "Add child to selection")}
               ${renderShortcutRow(["Shift", "N"], "Add root node")}
               ${renderShortcutRow(["/"], "Focus add-child field")}
+              ${renderShortcutRow(["D"], "Duplicate selected node")}
               ${renderShortcutRow(["Shift", "Up"], "Move selected node up")}
               ${renderShortcutRow(["Shift", "Down"], "Move selected node down")}
               ${renderShortcutRow(["Delete"], "Delete selected node")}
@@ -1443,6 +1447,20 @@ function applyDelete(nodeId) {
   commitTree(result.tree, result.nextSelectedId, 0, { keepDeleteUndo: true });
 }
 
+function duplicateNodeAndFocus(nodeId) {
+  if (!nodeId) {
+    return;
+  }
+
+  const result = duplicateNode(state.tree, nodeId);
+  if (!result.duplicatedId) {
+    return;
+  }
+
+  commitTree(result.tree, result.duplicatedId, 0);
+  focusSelectedTitle();
+}
+
 function restoreDeleteUndo() {
   if (!state.deleteUndo) {
     return;
@@ -1748,6 +1766,10 @@ function handleAction(target) {
     }
     case "delete-node": {
       applyDelete(nodeId);
+      return;
+    }
+    case "duplicate-node": {
+      duplicateNodeAndFocus(nodeId);
       return;
     }
     case "change-weight": {
@@ -2248,6 +2270,12 @@ window.addEventListener("keydown", (event) => {
     } else {
       addChildNodeAndFocus();
     }
+    return;
+  }
+
+  if (key === "d") {
+    event.preventDefault();
+    duplicateNodeAndFocus(state.selectedId);
     return;
   }
 

@@ -150,6 +150,18 @@ function collectNodeIds(nodes, ids = new Set()) {
   return ids;
 }
 
+function duplicateNodeWithNewIds(node, seenIds, isRootDuplicate = false) {
+  return {
+    id: reserveNodeId(null, seenIds),
+    title: isRootDuplicate ? `${node.title} Copy` : node.title,
+    weight: node.weight,
+    url: node.url,
+    kind: node.kind,
+    isExpanded: node.isExpanded,
+    children: node.children.map((child) => duplicateNodeWithNewIds(child, seenIds)),
+  };
+}
+
 function exportNodeToSwift(node) {
   const base = {
     id: node.id,
@@ -417,6 +429,26 @@ export function deleteNode(tree, nodeId, selectedId) {
       selectedId === nodeId || !findNode(nextTree, selectedId)
         ? computeDeleteFallback(nextTree, location.parentId, location.index)
         : selectedId,
+  };
+}
+
+export function duplicateNode(tree, nodeId) {
+  const nextTree = cloneTree(tree);
+  const location = findNodeLocation(nextTree, nodeId);
+
+  if (!location) {
+    return {
+      tree: nextTree,
+      duplicatedId: null,
+    };
+  }
+
+  const duplicate = duplicateNodeWithNewIds(location.node, collectNodeIds(nextTree), true);
+  location.collection.splice(location.index + 1, 0, duplicate);
+
+  return {
+    tree: validateInternalTree(nextTree),
+    duplicatedId: duplicate.id,
   };
 }
 

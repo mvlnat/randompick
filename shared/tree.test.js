@@ -6,6 +6,7 @@ import {
   addRootNode,
   createNode,
   deleteNode,
+  duplicateNode,
   exportToSwiftTree,
   findNode,
   MAX_NODE_URL_LENGTH,
@@ -292,6 +293,42 @@ test("deleteNode selects the next sibling when the selected node is removed", ()
 
   assert.equal(result.tree.length, 2);
   assert.equal(result.nextSelectedId, c.id);
+});
+
+test("duplicateNode inserts a copy after the original with fresh IDs", () => {
+  const child = createNode({
+    title: "Child",
+    kind: "item",
+    weight: 2,
+    url: "https://child.example",
+  });
+  const parent = createNode({
+    title: "Parent",
+    kind: "list",
+    weight: 3,
+    url: "https://parent.example",
+  });
+  parent.children.push(child);
+  const sibling = createNode({ title: "Sibling", kind: "item" });
+
+  const result = duplicateNode([parent, sibling], parent.id);
+
+  assert.equal(result.tree.length, 3);
+  assert.equal(result.tree[0].id, parent.id);
+  assert.equal(result.tree[2].id, sibling.id);
+
+  const duplicate = result.tree[1];
+  assert.equal(result.duplicatedId, duplicate.id);
+  assert.notEqual(duplicate.id, parent.id);
+  assert.equal(duplicate.title, "Parent Copy");
+  assert.equal(duplicate.kind, "list");
+  assert.equal(duplicate.weight, 3);
+  assert.equal(duplicate.url, "https://parent.example");
+  assert.equal(duplicate.children.length, 1);
+  assert.notEqual(duplicate.children[0].id, child.id);
+  assert.equal(duplicate.children[0].title, "Child");
+  assert.equal(duplicate.children[0].weight, 2);
+  assert.equal(duplicate.children[0].url, "https://child.example");
 });
 
 test("moveNodeRelative nests into any node and promotes leaf targets", () => {
