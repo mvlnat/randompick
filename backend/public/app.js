@@ -2,6 +2,7 @@ import Sortable from "/vendor/sortablejs.js";
 import {
   addChildNode,
   addRootNode,
+  cloneTree,
   createNode,
   deleteNode,
   deriveSelection,
@@ -51,6 +52,14 @@ function createEmptyRandomPickState() {
   };
 }
 
+function createDeleteUndoSnapshot(title) {
+  return {
+    title,
+    tree: cloneTree(state.tree),
+    selectedId: state.selectedId,
+  };
+}
+
 const state = {
   tree: [],
   version: 0,
@@ -66,6 +75,7 @@ const state = {
   outlineOpen: false,
   drag: createEmptyDragState(),
   conflictState: null,
+  deleteUndo: null,
 };
 
 let saveTimer = null;
@@ -1033,6 +1043,7 @@ function renderShortcutsDialog() {
               ${renderShortcutRow(["Shift", "N"], "Add root node")}
               ${renderShortcutRow(["/"], "Focus add-child field")}
               ${renderShortcutRow(["Delete"], "Delete selected node")}
+              ${renderShortcutRow([modifier, "Z"], "Undo deleted node")}
               ${renderShortcutRow([modifier, "S"], "Save now")}
             </dl>
           </section>
@@ -1064,6 +1075,22 @@ function renderConflictBanner() {
       <div class="banner-actions">
         <button class="button button-primary" data-action="reload-server-state" type="button">Reload server copy</button>
         <button class="button button-ghost" data-action="overwrite-server-state" type="button">Overwrite with local copy</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDeleteUndoBanner() {
+  if (!state.deleteUndo || state.saveStatus === "conflict") {
+    return "";
+  }
+
+  return `
+    <div class="banner banner-info" role="status">
+      <p>Deleted ${escapeHtml(state.deleteUndo.title)}.</p>
+      <div class="banner-actions">
+        <button class="button button-primary" data-action="undo-delete" type="button">Undo</button>
+        <button class="button button-ghost" data-action="dismiss-delete-undo" type="button">Dismiss</button>
       </div>
     </div>
   `;
@@ -1120,6 +1147,7 @@ function render() {
             </div>
           </div>
           ${renderConflictBanner()}
+          ${renderDeleteUndoBanner()}
           ${
             state.errorMessage
               ? `<div class="banner banner-error" role="alert"><p>${escapeHtml(state.errorMessage)}</p></div>`
@@ -1219,6 +1247,7 @@ async function loadState() {
     setSaveStatus("saved");
     state.errorMessage = "";
     state.conflictState = null;
+    state.deleteUndo = null;
     cancelScheduledSave();
   } catch (error) {
     setSaveStatus("error");
@@ -1329,8 +1358,11 @@ async function flushSave({ shouldRender = true } = {}) {
   }
 }
 
-function commitTree(nextTree, nextSelectedId, saveDelay = 0) {
+function commitTree(nextTree, nextSelectedId, saveDelay = 0, { keepDeleteUndo = false } = {}) {
   clearRandomPickAnimation();
+  if (!keepDeleteUndo) {
+    state.deleteUndo = null;
+  }
   state.tree = nextTree;
   state.selectedId = deriveSelection(nextTree, nextSelectedId ?? state.selectedId);
   state.conflictState = null;
@@ -1339,8 +1371,24 @@ function commitTree(nextTree, nextSelectedId, saveDelay = 0) {
 
 function applyDelete(nodeId) {
   clearRandomPickAnimation();
+  const node = findNode(state.tree, nodeId);
+  if (!node) {
+    return;
+  }
+
+  state.deleteUndo = createDeleteUndoSnapshot(node.title);
   const result = deleteNode(state.tree, nodeId, state.selectedId);
-  commitTree(result.tree, result.nextSelectedId, 0);
+  commitTree(result.tree, result.nextSelectedId, 0, { keepDeleteUndo: true });
+}
+
+function restoreDeleteUndo() {
+  if (!state.deleteUndo) {
+    return;
+  }
+
+  const undo = state.deleteUndo;
+  state.deleteUndo = null;
+  commitTree(undo.tree, undo.selectedId, 0);
 }
 
 function computeSidebarDropPosition(targetRow, clientY) {
@@ -1446,6 +1494,7 @@ function changeNodeWeight(nodeId, delta) {
     return;
   }
 
+  state.deleteUndo = null;
   state.tree = updateNodeWeight(state.tree, nodeId, nextWeight);
   queueSave(0);
 }
@@ -1623,9 +1672,19 @@ function handleAction(target) {
     }
     case "toggle-expand": {
       clearRandomPickAnimation();
+      state.deleteUndo = null;
       state.tree = toggleNodeExpanded(state.tree, nodeId);
       render();
       queueSave(0, false);
+      return;
+    }
+    case "undo-delete": {
+      restoreDeleteUndo();
+      return;
+    }
+    case "dismiss-delete-undo": {
+      state.deleteUndo = null;
+      render();
       return;
     }
     case "open-url": {
@@ -1698,6 +1757,7 @@ function handleAction(target) {
       }
       state.version = state.conflictState.version;
       state.conflictState = null;
+      state.deleteUndo = null;
       flushSave();
       return;
     }
@@ -1743,6 +1803,7 @@ function handleInput(event) {
   }
 
   if (target.matches('[data-action="edit-title"]')) {
+    state.deleteUndo = null;
     state.tree = updateNodeTitle(state.tree, target.dataset.nodeId, target.value);
     setSaveStatus("dirty");
     queueSave(600, false, false);
@@ -1750,6 +1811,7 @@ function handleInput(event) {
   }
 
   if (target.matches('[data-action="edit-url"]')) {
+    state.deleteUndo = null;
     state.tree = updateNodeUrl(state.tree, target.dataset.nodeId, target.value);
     syncWebsiteButtons(target.dataset.nodeId);
     setSaveStatus("dirty");
@@ -1887,6 +1949,7 @@ async function importTree(mode) {
     setSaveStatus("saved");
     state.errorMessage = "";
     state.conflictState = null;
+    state.deleteUndo = null;
     cancelScheduledSave();
     render();
   } catch (error) {
@@ -1954,6 +2017,13 @@ window.addEventListener("keydown", (event) => {
       return;
     }
 
+    if (state.deleteUndo) {
+      event.preventDefault();
+      state.deleteUndo = null;
+      render();
+      return;
+    }
+
     if (state.outlineFilter) {
       event.preventDefault();
       state.outlineFilter = "";
@@ -1970,6 +2040,12 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (state.importDialog || state.shortcutsDialog) {
+    return;
+  }
+
+  if (commandKey && key === "z" && state.deleteUndo && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    restoreDeleteUndo();
     return;
   }
 

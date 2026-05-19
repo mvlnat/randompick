@@ -319,6 +319,12 @@ textarea {
   color: var(--danger);
 }
 
+.banner-info {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--accent);
+}
+
 .banner-actions {
   display: flex;
   gap: 8px;
