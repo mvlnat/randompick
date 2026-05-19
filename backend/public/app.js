@@ -25,6 +25,14 @@ import {
 const app = document.querySelector("#app");
 const RANDOM_ROW_STEP_MS = 90;
 const RANDOM_ROW_FLASH_MS = 900;
+const SAVE_STATUS_LABELS = {
+  loading: "Loading",
+  dirty: "Unsaved",
+  saving: "Saving",
+  saved: "Saved",
+  error: "Save error",
+  conflict: "Conflict",
+};
 
 function createEmptyDragState() {
   return {
@@ -51,6 +59,7 @@ const state = {
   errorMessage: "",
   composerTitle: "",
   composerUrl: "",
+  outlineFilter: "",
   importDialog: null,
   shortcutsDialog: false,
   randomPick: createEmptyRandomPickState(),
@@ -114,8 +123,57 @@ function applyAppearance() {
   document.documentElement.dataset.theme = "dark";
 }
 
+function getSaveStatusLabel(status = state.saveStatus) {
+  return SAVE_STATUS_LABELS[status] || "Unknown";
+}
+
+function syncSaveStatus() {
+  const element = app.querySelector('[data-role="save-status"]');
+  if (!element) {
+    return;
+  }
+
+  element.textContent = getSaveStatusLabel();
+  element.className = `save-status save-status-${state.saveStatus}`;
+}
+
+function setSaveStatus(status) {
+  state.saveStatus = status;
+  syncSaveStatus();
+}
+
+function getOutlineFilter() {
+  return state.outlineFilter.trim().toLowerCase();
+}
+
+function nodeMatchesOutlineFilter(node, filter) {
+  return node.title.toLowerCase().includes(filter)
+    || node.url.toLowerCase().includes(filter);
+}
+
+function flattenFilteredTree(nodes, filter, depth = 0) {
+  const rows = [];
+
+  for (const node of nodes) {
+    const childRows = flattenFilteredTree(node.children, filter, depth + 1);
+    const isFilterMatch = nodeMatchesOutlineFilter(node, filter);
+
+    if (isFilterMatch || childRows.length > 0) {
+      rows.push({
+        node,
+        depth,
+        isFilterMatch,
+      });
+      rows.push(...childRows);
+    }
+  }
+
+  return rows;
+}
+
 function getVisibleRows() {
-  return flattenVisibleTree(state.tree);
+  const filter = getOutlineFilter();
+  return filter ? flattenFilteredTree(state.tree, filter) : flattenVisibleTree(state.tree);
 }
 
 function getSelectedNode() {
@@ -289,6 +347,10 @@ function syncSortables() {
 function syncSidebarSortable() {
   sidebarSortable?.destroy();
   sidebarSortable = null;
+
+  if (getOutlineFilter()) {
+    return;
+  }
 
   const treeList = document.querySelector(".tree-list");
   const sidebarRows = treeList?.querySelectorAll('[data-role="sidebar-row"]') || [];
@@ -478,6 +540,12 @@ function focusComposerInput() {
   document.querySelector(".composer-input")?.focus();
 }
 
+function focusOutlineFilter() {
+  state.outlineOpen = true;
+  render();
+  document.querySelector(".outline-search-input")?.focus();
+}
+
 function setSelectionAndFocus(nodeId) {
   clearRandomPickAnimation();
   state.selectedId = deriveSelection(state.tree, nodeId);
@@ -489,6 +557,9 @@ function selectVisibleRow(offset) {
   const rows = getVisibleRows();
   const currentIndex = rows.findIndex(({ node }) => node.id === state.selectedId);
   if (currentIndex === -1) {
+    if (rows[0]) {
+      setSelectionAndFocus(rows[0].node.id);
+    }
     return;
   }
 
@@ -535,6 +606,14 @@ function navigateLeft() {
     return;
   }
 
+  if (getOutlineFilter()) {
+    const parentId = findParentId(state.tree, selectedNode.id);
+    if (parentId) {
+      setSelectionAndFocus(parentId);
+    }
+    return;
+  }
+
   if (nodeHasChildren(selectedNode) && selectedNode.isExpanded) {
     clearRandomPickAnimation();
     state.tree = toggleNodeExpanded(state.tree, selectedNode.id);
@@ -558,6 +637,17 @@ function navigateRight() {
     return;
   }
 
+  if (getOutlineFilter()) {
+    const rows = getVisibleRows();
+    const currentIndex = rows.findIndex(({ node }) => node.id === selectedNode.id);
+    const nextRow = rows[currentIndex + 1];
+    const currentDepth = rows[currentIndex]?.depth;
+    if (nextRow && currentDepth !== undefined && nextRow.depth > currentDepth) {
+      setSelectionAndFocus(nextRow.node.id);
+    }
+    return;
+  }
+
   if (!selectedNode.isExpanded) {
     clearRandomPickAnimation();
     state.tree = toggleNodeExpanded(state.tree, selectedNode.id);
@@ -575,8 +665,17 @@ function navigateRight() {
   setSelectionAndFocus(firstChildId);
 }
 
-function renderSidebarRows(rows) {
+function renderSidebarRows(rows, { isFiltered = false } = {}) {
   if (rows.length === 0) {
+    if (isFiltered) {
+      return `
+        <div class="sidebar-empty">
+          <p>No matches.</p>
+          <p>Try another search.</p>
+        </div>
+      `;
+    }
+
     return `
       <div class="sidebar-empty">
         <p>No nodes yet.</p>
@@ -586,15 +685,22 @@ function renderSidebarRows(rows) {
   }
 
   return rows
-    .map(({ node, depth }) => {
+    .map(({ node, depth, isFilterMatch = false }) => {
       const nodeId = escapeAttribute(node.id);
       const classes = [
         "tree-row",
         isSelected(node.id) ? "is-selected" : "",
+        isFiltered ? "is-filtered" : "",
+        isFiltered && isFilterMatch ? "is-filter-match" : "",
+        isFiltered && !isFilterMatch ? "is-filter-context" : "",
       ]
         .filter(Boolean)
         .join(" ");
       const canExpand = nodeHasChildren(node);
+      const canToggle = canExpand && !isFiltered;
+      const expandedAttribute = canToggle
+        ? `aria-expanded="${node.isExpanded ? "true" : "false"}"`
+        : "";
 
       return `
         <div
@@ -604,7 +710,7 @@ function renderSidebarRows(rows) {
           role="treeitem"
           aria-level="${depth + 1}"
           aria-selected="${isSelected(node.id) ? "true" : "false"}"
-          ${canExpand ? `aria-expanded="${node.isExpanded ? "true" : "false"}"` : ""}
+          ${expandedAttribute}
           style="--depth:${depth};"
         >
           <button
@@ -612,18 +718,19 @@ function renderSidebarRows(rows) {
             data-role="sidebar-handle"
             data-node-id="${nodeId}"
             aria-label="Drag to move ${escapeHtml(node.title)}"
+            ${isFiltered ? "disabled" : ""}
             type="button"
           >⋮⋮</button>
           <button
             class="tree-toggle"
             data-action="toggle-expand"
             data-node-id="${nodeId}"
-            ${canExpand ? "" : "disabled"}
-            aria-label="${canExpand && node.isExpanded ? "Collapse" : "Expand"}"
-            aria-hidden="${canExpand ? "false" : "true"}"
+            ${canToggle ? "" : "disabled"}
+            aria-label="${canToggle && node.isExpanded ? "Collapse" : "Expand"}"
+            aria-hidden="${canToggle ? "false" : "true"}"
             type="button"
           >
-            ${canExpand ? (node.isExpanded ? "▾" : "▸") : ""}
+            ${canToggle ? (node.isExpanded ? "▾" : "▸") : ""}
           </button>
           <button
             class="tree-main"
@@ -878,6 +985,7 @@ function renderShortcutsDialog() {
               ${renderShortcutRow(["Right"], "Expand or move to first child")}
               ${renderShortcutRow(["Home"], "Move to first visible node")}
               ${renderShortcutRow(["End"], "Move to last visible node")}
+              ${renderShortcutRow(["F"], "Search outline")}
               ${renderShortcutRow([modifier, "1"], "Move to first root")}
             </dl>
           </section>
@@ -926,7 +1034,12 @@ function renderConflictBanner() {
 
 function render() {
   applyAppearance();
+  const outlineFilter = getOutlineFilter();
+  const isFiltered = Boolean(outlineFilter);
   const sidebarRows = getVisibleRows();
+  const outlineMatchCount = isFiltered
+    ? sidebarRows.filter((row) => row.isFilterMatch).length
+    : 0;
   const selectedNode = getSelectedNode();
 
   app.innerHTML = `
@@ -935,6 +1048,12 @@ function render() {
         <div class="brand-block">
           <h1>RandomPick</h1>
         </div>
+        <span
+          class="save-status save-status-${state.saveStatus}"
+          data-role="save-status"
+          role="status"
+          aria-live="polite"
+        >${getSaveStatusLabel()}</span>
         <div class="topbar-actions">
           <button
             class="button button-ghost mobile-outline-toggle"
@@ -969,8 +1088,32 @@ function render() {
               ? `<div class="banner banner-error" role="alert"><p>${escapeHtml(state.errorMessage)}</p></div>`
               : ""
           }
+          <div class="outline-search">
+            <input
+              class="outline-search-input"
+              data-action="edit-outline-filter"
+              type="search"
+              aria-label="Search node outline"
+              placeholder="Search nodes"
+              autocomplete="off"
+              spellcheck="false"
+              value="${escapeHtml(state.outlineFilter)}"
+            />
+            <button
+              class="icon-button"
+              data-action="clear-outline-filter"
+              ${state.outlineFilter ? "" : "disabled"}
+              aria-label="Clear node search"
+              type="button"
+            >×</button>
+          </div>
+          ${
+            isFiltered
+              ? `<p class="outline-filter-meta">${outlineMatchCount} ${outlineMatchCount === 1 ? "match" : "matches"}</p>`
+              : ""
+          }
           <div class="tree-list" role="tree" aria-label="Node outline">
-            ${renderSidebarRows(sidebarRows)}
+            ${renderSidebarRows(sidebarRows, { isFiltered })}
             <div class="tree-end-drop" data-role="sidebar-end-drop"></div>
           </div>
         </aside>
@@ -1027,7 +1170,7 @@ async function request(url, options = {}) {
 
 async function loadState() {
   clearRandomPickAnimation();
-  state.saveStatus = "loading";
+  setSaveStatus("loading");
   render();
 
   try {
@@ -1036,12 +1179,12 @@ async function loadState() {
     state.tree = payload.tree;
     state.version = payload.version;
     state.selectedId = deriveSelection(state.tree, state.selectedId);
-    state.saveStatus = "saved";
+    setSaveStatus("saved");
     state.errorMessage = "";
     state.conflictState = null;
     cancelScheduledSave();
   } catch (error) {
-    state.saveStatus = "error";
+    setSaveStatus("error");
     state.errorMessage = error instanceof Error ? error.message : "Failed to load state.";
   }
 
@@ -1049,7 +1192,7 @@ async function loadState() {
 }
 
 function queueSave(delay = 400, shouldRender = true, shouldRenderFlush = true) {
-  state.saveStatus = "dirty";
+  setSaveStatus("dirty");
   if (shouldRender) {
     render();
   }
@@ -1087,7 +1230,7 @@ async function flushSave({ shouldRender = true } = {}) {
   }
 
   saveInFlight = true;
-  state.saveStatus = "saving";
+  setSaveStatus("saving");
   state.errorMessage = "";
   if (shouldRender) {
     render();
@@ -1117,9 +1260,9 @@ async function flushSave({ shouldRender = true } = {}) {
     if (state.tree === submittedTree) {
       state.tree = result.tree;
       state.selectedId = deriveSelection(state.tree, state.selectedId);
-      state.saveStatus = "saved";
+      setSaveStatus("saved");
     } else {
-      state.saveStatus = "dirty";
+      setSaveStatus("dirty");
       pendingSave = true;
     }
   } catch (error) {
@@ -1128,11 +1271,11 @@ async function flushSave({ shouldRender = true } = {}) {
     }
 
     if (error.status === 409 && error.payload?.state) {
-      state.saveStatus = "conflict";
+      setSaveStatus("conflict");
       state.conflictState = error.payload.state;
       state.errorMessage = "";
     } else {
-      state.saveStatus = "error";
+      setSaveStatus("error");
       state.errorMessage = error instanceof Error ? error.message : "Failed to save.";
     }
   } finally {
@@ -1471,6 +1614,12 @@ function handleAction(target) {
       render();
       return;
     }
+    case "clear-outline-filter": {
+      state.outlineFilter = "";
+      render();
+      document.querySelector(".outline-search-input")?.focus();
+      return;
+    }
     case "trigger-import": {
       document.querySelector("#import-input")?.click();
       return;
@@ -1538,9 +1687,27 @@ function handleInput(event) {
     return;
   }
 
+  if (target.matches('[data-action="edit-outline-filter"]')) {
+    const caretPosition = target instanceof HTMLInputElement
+      ? target.selectionStart ?? target.value.length
+      : null;
+
+    state.outlineFilter = target.value;
+    render();
+
+    const searchInput = document.querySelector(".outline-search-input");
+    if (searchInput instanceof HTMLInputElement) {
+      searchInput.focus();
+      if (caretPosition !== null) {
+        searchInput.setSelectionRange(caretPosition, caretPosition);
+      }
+    }
+    return;
+  }
+
   if (target.matches('[data-action="edit-title"]')) {
     state.tree = updateNodeTitle(state.tree, target.dataset.nodeId, target.value);
-    state.saveStatus = "dirty";
+    setSaveStatus("dirty");
     queueSave(600, false, false);
     return;
   }
@@ -1548,7 +1715,7 @@ function handleInput(event) {
   if (target.matches('[data-action="edit-url"]')) {
     state.tree = updateNodeUrl(state.tree, target.dataset.nodeId, target.value);
     syncWebsiteButtons(target.dataset.nodeId);
-    state.saveStatus = "dirty";
+    setSaveStatus("dirty");
     queueSave(600, false, false);
     return;
   }
@@ -1654,7 +1821,7 @@ async function importTree(mode) {
     state.version = result.version;
     state.selectedId = deriveSelection(state.tree, getFirstRootId(state.tree));
     state.importDialog = null;
-    state.saveStatus = "saved";
+    setSaveStatus("saved");
     state.errorMessage = "";
     state.conflictState = null;
     cancelScheduledSave();
@@ -1720,6 +1887,13 @@ window.addEventListener("keydown", (event) => {
     if (hasRandomPickState()) {
       event.preventDefault();
       clearRandomPickAnimation({ shouldRender: true });
+      return;
+    }
+
+    if (state.outlineFilter) {
+      event.preventDefault();
+      state.outlineFilter = "";
+      render();
       return;
     }
 
@@ -1839,6 +2013,12 @@ window.addEventListener("keydown", (event) => {
   if (key === "e") {
     event.preventDefault();
     moveSelectionToCurrentRoot();
+    return;
+  }
+
+  if (key === "f") {
+    event.preventDefault();
+    focusOutlineFilter();
     return;
   }
 
