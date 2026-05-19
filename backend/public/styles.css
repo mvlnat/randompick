@@ -650,6 +650,24 @@ textarea {
   background: color-mix(in srgb, var(--bg-panel) 88%, black 5%);
 }
 
+.detail-list-header {
+  display: grid;
+  grid-template-columns: auto auto minmax(150px, 1.1fr) minmax(150px, 0.9fr) auto auto auto auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.detail-list-header-actions {
+  grid-column: 6 / -1;
+  text-align: center;
+}
+
 .detail-row {
   display: grid;
   grid-template-columns: auto auto minmax(150px, 1.1fr) minmax(150px, 0.9fr) auto auto auto auto;
@@ -726,6 +744,17 @@ textarea {
 .row-move-button {
   width: 20px;
   height: 20px;
+}
+
+.row-action-button {
+  width: 28px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+
+.row-action-danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .weight-control {
@@ -1140,6 +1169,10 @@ textarea {
     padding: 1px 3px;
   }
 
+  .detail-list-header {
+    display: none;
+  }
+
   .detail-row .detail-input,
   .detail-row .detail-url-input {
     grid-column: 3 / -1;
@@ -1162,6 +1195,18 @@ textarea {
     grid-column: 6;
   }
 
+  .detail-row .row-action-button[data-action="open-url"] {
+    grid-column: 4;
+  }
+
+  .detail-row .row-action-button[data-action="open-node"] {
+    grid-column: 5;
+  }
+
+  .detail-row .row-action-button[data-action="delete-node"] {
+    grid-column: 6;
+  }
+
   .detail-row .button {
     justify-self: auto;
     min-height: 26px;
@@ -1177,6 +1222,11 @@ textarea {
   .row-move-button {
     width: 18px;
     height: 18px;
+  }
+
+  .row-action-button {
+    width: 26px;
+    height: 24px;
   }
 
   .weight-control {
@@ -1237,6 +1287,14 @@ textarea {
     padding: 0;
     overflow: hidden;
     font-size: 0;
+  }
+
+  .detail-row .row-action-button[data-action="open-url"],
+  .detail-row .row-action-button[data-action="open-node"],
+  .detail-row .row-action-button[data-action="delete-node"] {
+    width: 32px;
+    min-width: 32px;
+    padding: 0;
   }
 
   .detail-row .button[data-action="open-url"]::before {

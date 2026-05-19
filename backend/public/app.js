@@ -822,6 +822,19 @@ function renderDetailPath(nodes) {
   `;
 }
 
+function renderDetailListHeader() {
+  return `
+    <div class="detail-list-header" aria-hidden="true">
+      <span></span>
+      <span>Move</span>
+      <span>Title</span>
+      <span>Link</span>
+      <span>Weight</span>
+      <span class="detail-list-header-actions">Actions</span>
+    </div>
+  `;
+}
+
 function renderDetailContent(selectedNode) {
   if (!selectedNode) {
     return `
@@ -929,9 +942,9 @@ function renderDetailContent(selectedNode) {
                   type="button"
                 >+</button>
               </div>
-              <button class="button button-ghost" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open link for ${escapeHtml(child.title)}" type="button">Open link</button>
-              <button class="button button-ghost" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" type="button">Open</button>
-              <button class="button button-ghost" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" type="button">Delete</button>
+              <button class="icon-button row-action-button" data-action="open-url" data-node-id="${childId}" ${childHasWebsite ? "" : "disabled"} aria-label="Open link for ${escapeHtml(child.title)}" title="Open link" type="button">↗</button>
+              <button class="icon-button row-action-button" data-action="open-node" data-node-id="${childId}" aria-label="Open ${escapeHtml(child.title)}" title="Open node" type="button">→</button>
+              <button class="icon-button row-action-button row-action-danger" data-action="delete-node" data-node-id="${childId}" aria-label="Delete ${escapeHtml(child.title)}" title="Delete" type="button">×</button>
             </div>
           `;
         })
@@ -991,6 +1004,7 @@ function renderDetailContent(selectedNode) {
       </div>
 
       <div class="detail-list" role="list" aria-label="Child nodes">
+        ${children.length ? renderDetailListHeader() : ""}
         ${rows}
       </div>
 
