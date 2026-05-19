@@ -228,6 +228,21 @@ function formatWeightChance(weight, totalWeight) {
   return `${Math.round(chance)}%`;
 }
 
+function normalizeComposerLine(line) {
+  return line
+    .trim()
+    .replace(/^[-*]\s+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .trim();
+}
+
+function getComposerTitles() {
+  return state.composerTitle
+    .split(/\r?\n/)
+    .map(normalizeComposerLine)
+    .filter(Boolean);
+}
+
 function isDropInvalid(nodeId, dragId = state.drag.nodeId) {
   if (!dragId) {
     return false;
@@ -554,7 +569,7 @@ function focusSelectedTitle() {
 }
 
 function focusComposerInput() {
-  document.querySelector(".composer-input")?.focus();
+  document.querySelector('[name="composerTitle"]')?.focus();
 }
 
 function focusOutlineFilter() {
@@ -924,13 +939,13 @@ function renderDetailContent(selectedNode) {
       </div>
 
       <form class="composer" data-action="submit-composer">
-        <input
-          class="composer-input"
+        <textarea
+          class="composer-input composer-title-input"
           name="composerTitle"
           aria-label="New child node title"
-          placeholder="Add a node"
-          value="${escapeHtml(state.composerTitle)}"
-        />
+          placeholder="Add nodes"
+          rows="2"
+        >${escapeHtml(state.composerTitle)}</textarea>
         <input
           class="composer-input composer-url-input"
           name="composerUrl"
@@ -1381,7 +1396,7 @@ function dismissTransientState() {
 
 function renderAndFocusComposer() {
   render();
-  document.querySelector(".composer-input")?.focus();
+  document.querySelector('[name="composerTitle"]')?.focus();
 }
 
 function selectNode(nodeId) {
@@ -1810,20 +1825,46 @@ function handleSubmit(event) {
     return;
   }
 
-  const title = state.composerTitle.trim();
-  if (!title) {
+  const titles = getComposerTitles();
+  if (titles.length === 0) {
     return;
   }
 
-  const nextNode = createNode({
-    title,
-    url: state.composerUrl,
-  });
+  const sharedUrl = titles.length === 1 ? state.composerUrl : "";
+  let nextTree = state.tree;
+  for (const title of titles) {
+    const nextNode = createNode({
+      title,
+      url: sharedUrl,
+    });
+    nextTree = addChildNode(nextTree, selectedNode.id, nextNode);
+  }
 
-  commitTree(addChildNode(state.tree, selectedNode.id, nextNode), selectedNode.id, 0);
+  commitTree(nextTree, selectedNode.id, 0);
   state.composerTitle = "";
   state.composerUrl = "";
   renderAndFocusComposer();
+}
+
+function handleComposerKeydown(event) {
+  const target = event.target;
+  if (
+    !(target instanceof HTMLTextAreaElement)
+    || target.name !== "composerTitle"
+    || event.key !== "Enter"
+    || event.shiftKey
+    || event.isComposing
+  ) {
+    return;
+  }
+
+  const form = target.closest("form");
+  if (!form) {
+    return;
+  }
+
+  event.preventDefault();
+  form.requestSubmit();
 }
 
 async function importTree(mode) {
@@ -1881,6 +1922,7 @@ app.addEventListener("click", (event) => {
 });
 app.addEventListener("input", handleInput);
 app.addEventListener("change", handleChange);
+app.addEventListener("keydown", handleComposerKeydown);
 app.addEventListener("submit", handleSubmit);
 
 window.addEventListener("keydown", (event) => {

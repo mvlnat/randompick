@@ -48,17 +48,19 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   outline: none;
 }
 
-:where(button, input, select):focus-visible {
+:where(button, input, select, textarea):focus-visible {
   outline: 2px solid rgba(212, 177, 119, 0.52);
   outline-offset: 2px;
 }
@@ -505,6 +507,13 @@ select {
   border: 1px solid var(--border);
   background: var(--bg-control);
   color: var(--text-primary);
+}
+
+.composer-title-input {
+  min-height: 58px;
+  padding-block: 8px;
+  line-height: 1.35;
+  resize: vertical;
 }
 
 .detail-title-input {
