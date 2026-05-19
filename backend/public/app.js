@@ -794,6 +794,34 @@ function renderSidebarRows(rows, { isFiltered = false } = {}) {
     .join("");
 }
 
+function renderDetailPath(nodes) {
+  return `
+    <nav class="detail-path" aria-label="Current path">
+      ${nodes
+        .map((node, index) => {
+          const isCurrent = index === nodes.length - 1;
+          const nodeTitle = escapeHtml(node.title);
+          const separator = index > 0 ? '<span class="detail-path-separator">/</span>' : "";
+
+          if (isCurrent) {
+            return `${separator}<span class="detail-path-current" aria-current="page">${nodeTitle}</span>`;
+          }
+
+          return `
+            ${separator}
+            <button
+              class="detail-path-link"
+              data-action="select-node"
+              data-node-id="${escapeAttribute(node.id)}"
+              type="button"
+            >${nodeTitle}</button>
+          `;
+        })
+        .join("")}
+    </nav>
+  `;
+}
+
 function renderDetailContent(selectedNode) {
   if (!selectedNode) {
     return `
@@ -804,9 +832,7 @@ function renderDetailContent(selectedNode) {
     `;
   }
 
-  const path = findPath(state.tree, selectedNode.id)
-    .map((node) => escapeHtml(node.title))
-    .join(" / ");
+  const pathNodes = findPath(state.tree, selectedNode.id);
 
   const children = selectedNode.children;
   const selectedNodeId = escapeAttribute(selectedNode.id);
@@ -901,7 +927,7 @@ function renderDetailContent(selectedNode) {
     <section class="detail-card">
       <div class="detail-header">
         <div>
-          <p class="detail-path">${path}</p>
+          ${renderDetailPath(pathNodes)}
           <div class="detail-title-row">
             <input
               class="detail-title-input"
