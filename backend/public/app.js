@@ -211,6 +211,23 @@ function nodeHasWebsite(node) {
   return Boolean(getWebsiteHref(node?.url));
 }
 
+function formatWeightChance(weight, totalWeight) {
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+    return "0%";
+  }
+
+  const chance = (weight / totalWeight) * 100;
+  if (chance > 0 && chance < 1) {
+    return "<1%";
+  }
+
+  if (chance > 99 && chance < 100) {
+    return ">99%";
+  }
+
+  return `${Math.round(chance)}%`;
+}
+
 function isDropInvalid(nodeId, dragId = state.drag.nodeId) {
   if (!dragId) {
     return false;
@@ -770,11 +787,14 @@ function renderDetailContent(selectedNode) {
   const selectedNodeId = escapeAttribute(selectedNode.id);
   const parentId = findParentId(state.tree, selectedNode.id);
   const selectedHasWebsite = nodeHasWebsite(selectedNode);
+  const totalWeight = children.reduce((total, child) => total + getNodeWeight(child), 0);
   const rows = children.length
     ? children
         .map((child, index) => {
           const childId = escapeAttribute(child.id);
-          const childWeight = child.weight || 1;
+          const childWeight = getNodeWeight(child);
+          const childChance = formatWeightChance(childWeight, totalWeight);
+          const childChanceText = escapeHtml(childChance);
           const childHasWebsite = nodeHasWebsite(child);
           const rowClasses = [
             "detail-row",
@@ -827,6 +847,7 @@ function renderDetailContent(selectedNode) {
                   type="button"
                 >-</button>
                 <span class="weight-value" aria-label="Weight ${childWeight}">${childWeight}</span>
+                <span class="weight-chance" aria-label="Random chance ${escapeAttribute(childChance)}">${childChanceText}</span>
                 <button
                   class="icon-button weight-button"
                   data-action="change-weight"
@@ -885,6 +906,7 @@ function renderDetailContent(selectedNode) {
           </div>
           <p class="detail-meta">
             ${children.length} child ${children.length === 1 ? "node" : "nodes"}
+            ${children.length > 0 ? ` / total weight ${totalWeight}` : ""}
           </p>
         </div>
         <div class="detail-header-actions">

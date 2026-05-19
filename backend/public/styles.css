@@ -628,7 +628,7 @@ select {
 
 .weight-control {
   display: inline-grid;
-  grid-template-columns: 20px minmax(22px, auto) 20px;
+  grid-template-columns: 20px minmax(22px, auto) minmax(34px, auto) 20px;
   align-items: center;
   justify-items: center;
   gap: 1px;
@@ -646,6 +646,15 @@ select {
   font-size: 11px;
   text-align: center;
   line-height: 1;
+}
+
+.weight-chance {
+  min-width: 34px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
 }
 
 .icon-button:disabled,
@@ -1055,7 +1064,7 @@ select {
   }
 
   .weight-control {
-    grid-template-columns: 18px minmax(18px, auto) 18px;
+    grid-template-columns: 18px minmax(18px, auto) minmax(30px, auto) 18px;
   }
 
   .weight-button {
@@ -1066,6 +1075,11 @@ select {
   .weight-value {
     min-width: 18px;
     font-size: 10px;
+  }
+
+  .weight-chance {
+    min-width: 30px;
+    font-size: 9px;
   }
 
   .detail-input,
@@ -1125,7 +1139,7 @@ select {
   }
 
   .weight-control {
-    grid-template-columns: 16px minmax(16px, auto) 16px;
+    grid-template-columns: 16px minmax(16px, auto) minmax(28px, auto) 16px;
   }
 
   .weight-button {
@@ -1134,6 +1148,10 @@ select {
 
   .weight-value {
     min-width: 16px;
+  }
+
+  .weight-chance {
+    min-width: 28px;
   }
 }
 
