@@ -53,6 +53,13 @@ function createEmptyRandomPickState() {
   };
 }
 
+function createLastPick(sourceId, pickedId) {
+  return {
+    sourceId,
+    pickedId,
+  };
+}
+
 function createDeleteUndoSnapshot(title) {
   return {
     title,
@@ -73,6 +80,7 @@ const state = {
   importDialog: null,
   shortcutsDialog: false,
   randomPick: createEmptyRandomPickState(),
+  lastPick: null,
   outlineOpen: false,
   drag: createEmptyDragState(),
   conflictState: null,
@@ -837,9 +845,12 @@ function renderDetailListHeader() {
 }
 
 function renderDetailContent(selectedNode) {
+  const lastPickBanner = renderLastPickBanner();
+
   if (!selectedNode) {
     return `
       <section class="detail-card empty-state">
+        ${lastPickBanner}
         <h2>No selection</h2>
         <p>Select a node from the outline.</p>
       </section>
@@ -960,6 +971,7 @@ function renderDetailContent(selectedNode) {
 
   return `
     <section class="detail-card">
+      ${lastPickBanner}
       <div class="detail-header">
         <div>
           ${renderDetailPath(pathNodes)}
@@ -1162,6 +1174,45 @@ function renderDeleteUndoBanner() {
   `;
 }
 
+function getLastPickNodes() {
+  if (!state.lastPick) {
+    return null;
+  }
+
+  const source = findNode(state.tree, state.lastPick.sourceId);
+  const picked = findNode(state.tree, state.lastPick.pickedId);
+
+  if (!source || !picked) {
+    return null;
+  }
+
+  return { source, picked };
+}
+
+function renderLastPickBanner() {
+  const result = getLastPickNodes();
+  if (!result) {
+    return "";
+  }
+
+  const sourceId = escapeAttribute(result.source.id);
+  const pickedId = escapeAttribute(result.picked.id);
+  const sourceTitle = escapeHtml(result.source.title);
+  const pickedTitle = escapeHtml(result.picked.title);
+
+  return `
+    <div class="banner banner-pick-result" role="status" aria-live="polite">
+      <p><span>Picked</span> <strong>${pickedTitle}</strong> <span>from ${sourceTitle}</span></p>
+      <div class="banner-actions">
+        <button class="button button-primary" data-action="select-node" data-node-id="${sourceId}" type="button">Back to list</button>
+        <button class="button button-ghost" data-action="pick-random" data-node-id="${sourceId}" ${result.source.children.length === 0 ? "disabled" : ""} type="button">Pick again</button>
+        <button class="button button-ghost" data-action="open-url" data-node-id="${pickedId}" ${nodeHasWebsite(result.picked) ? "" : "disabled"} type="button">Open link</button>
+        <button class="button button-ghost" data-action="dismiss-last-pick" type="button">Dismiss</button>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   applyAppearance();
   const outlineFilter = getOutlineFilter();
@@ -1301,6 +1352,7 @@ async function request(url, options = {}) {
 
 async function loadState() {
   clearRandomPickAnimation();
+  state.lastPick = null;
   setSaveStatus("loading");
   render();
 
@@ -1429,6 +1481,7 @@ function commitTree(nextTree, nextSelectedId, saveDelay = 0, { keepDeleteUndo = 
   if (!keepDeleteUndo) {
     state.deleteUndo = null;
   }
+  state.lastPick = null;
   state.tree = nextTree;
   state.selectedId = deriveSelection(nextTree, nextSelectedId ?? state.selectedId);
   state.conflictState = null;
@@ -1575,6 +1628,7 @@ function changeNodeWeight(nodeId, delta) {
   }
 
   state.deleteUndo = null;
+  state.lastPick = null;
   state.tree = updateNodeWeight(state.tree, nodeId, nextWeight);
   queueSave(0);
 }
@@ -1727,7 +1781,15 @@ function pickRandomChild(nodeId) {
     ? pick.children[0]
     : null;
 
+  state.lastPick = null;
+
+  if (state.selectedId !== selectedNode.id) {
+    state.selectedId = selectedNode.id;
+    render();
+  }
+
   animateRandomRowPick(selectedNode, pick, () => {
+    state.lastPick = createLastPick(selectedNode.id, pick.id);
     state.selectedId = pick.id;
     // Render to reflect the new selection (open the picked node)
     render();
@@ -1784,6 +1846,7 @@ function handleAction(target) {
     case "toggle-expand": {
       clearRandomPickAnimation();
       state.deleteUndo = null;
+      state.lastPick = null;
       state.tree = toggleNodeExpanded(state.tree, nodeId);
       render();
       queueSave(0, false);
@@ -1795,6 +1858,11 @@ function handleAction(target) {
     }
     case "dismiss-delete-undo": {
       state.deleteUndo = null;
+      render();
+      return;
+    }
+    case "dismiss-last-pick": {
+      state.lastPick = null;
       render();
       return;
     }
@@ -2057,6 +2125,7 @@ async function importTree(mode) {
     state.version = result.version;
     state.selectedId = deriveSelection(state.tree, getFirstRootId(state.tree));
     state.importDialog = null;
+    state.lastPick = null;
     setSaveStatus("saved");
     state.errorMessage = "";
     state.conflictState = null;

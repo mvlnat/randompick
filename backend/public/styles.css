@@ -367,6 +367,17 @@ textarea {
 
 .banner p {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.banner strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.detail-card > .banner:first-child {
+  margin-top: 0;
 }
 
 .banner-warning {
@@ -387,10 +398,19 @@ textarea {
   color: var(--accent);
 }
 
+.banner-pick-result {
+  background:
+    linear-gradient(90deg, rgba(99, 208, 184, 0.16), rgba(239, 191, 100, 0.08)),
+    color-mix(in srgb, var(--bg-muted) 76%, black 8%);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--warning) 14%);
+  color: var(--text-secondary);
+}
+
 .banner-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 0 1 auto;
 }
 
 .outline-search {
