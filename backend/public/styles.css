@@ -1,25 +1,26 @@
 :root {
-  --text-primary: #f4ecde;
-  --text-secondary: #e2d4bd;
-  --text-tertiary: #a89980;
-  --bg-app: #12100d;
-  --bg-panel: #171411;
-  --bg-panel-solid: #171411;
-  --bg-muted: #201c17;
-  --bg-control: #1b1713;
-  --border: rgba(244, 236, 222, 0.11);
-  --border-strong: rgba(244, 236, 222, 0.22);
-  --accent: #d4b177;
-  --accent-soft: rgba(212, 177, 119, 0.16);
-  --danger: #e07b66;
-  --danger-soft: rgba(224, 123, 102, 0.14);
-  --warning: #ddb067;
-  --warning-soft: rgba(221, 176, 103, 0.14);
-  --shadow-sm: none;
-  --shadow-lg: none;
+  --text-primary: #edf4ef;
+  --text-secondary: #c3d2cb;
+  --text-tertiary: #84958d;
+  --bg-app: #0d1110;
+  --bg-panel: #151b19;
+  --bg-panel-solid: #17201d;
+  --bg-muted: #1d2724;
+  --bg-control: #101715;
+  --border: rgba(218, 235, 226, 0.1);
+  --border-strong: rgba(218, 235, 226, 0.22);
+  --accent: #63d0b8;
+  --accent-strong: #9ae4d4;
+  --accent-soft: rgba(99, 208, 184, 0.14);
+  --danger: #ff7f8f;
+  --danger-soft: rgba(255, 127, 143, 0.13);
+  --warning: #efbf64;
+  --warning-soft: rgba(239, 191, 100, 0.13);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.28);
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-serif: Iowan Old Style, Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-serif: var(--font-system);
   color-scheme: dark;
 }
 
@@ -39,11 +40,17 @@ body {
   font-family: var(--font-system);
   background-color: var(--bg-app);
   background-image:
-    linear-gradient(rgba(244, 236, 222, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(244, 236, 222, 0.025) 1px, transparent 1px);
-  background-size: 100% 32px, 32px 100%;
+    linear-gradient(rgba(218, 235, 226, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(218, 235, 226, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(99, 208, 184, 0.08), transparent 240px);
+  background-size: 100% 34px, 34px 100%, 100% 100%;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(99, 208, 184, 0.28);
+  color: var(--text-primary);
 }
 
 button,
@@ -61,7 +68,7 @@ textarea {
 }
 
 :where(button, input, select, textarea):focus-visible {
-  outline: 2px solid rgba(212, 177, 119, 0.52);
+  outline: 2px solid rgba(99, 208, 184, 0.56);
   outline-offset: 2px;
 }
 
@@ -89,6 +96,9 @@ textarea {
 }
 
 .topbar {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -97,8 +107,9 @@ textarea {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-panel);
+  background: color-mix(in srgb, var(--bg-panel-solid) 88%, transparent);
   box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(16px);
 }
 
 .brand-block h1,
@@ -113,7 +124,8 @@ textarea {
 .brand-block h1 {
   font-family: var(--font-serif);
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 720;
+  color: var(--accent-strong);
 }
 
 .panel-label,
@@ -148,7 +160,7 @@ textarea {
 }
 
 .detail-path-link:hover {
-  color: var(--text-primary);
+  color: var(--accent-strong);
 }
 
 .detail-path-current {
@@ -181,7 +193,7 @@ textarea {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  background: var(--bg-control);
+  background: color-mix(in srgb, var(--bg-control) 86%, black 14%);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -219,16 +231,21 @@ textarea {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  background: var(--bg-control);
+  background: color-mix(in srgb, var(--bg-control) 88%, white 2%);
   color: var(--text-primary);
   font-size: 12px;
   letter-spacing: 0;
-  transition: border-color 120ms ease, opacity 120ms ease, background 120ms ease, color 120ms ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 120ms ease, opacity 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
 }
 
 .button:hover {
-  background: color-mix(in srgb, var(--bg-control) 92%, white 8%);
+  background: color-mix(in srgb, var(--bg-control) 82%, white 10%);
   border-color: var(--border-strong);
+}
+
+.button:active {
+  transform: translateY(1px);
 }
 
 .button:disabled {
@@ -239,14 +256,17 @@ textarea {
 .button-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #171411;
-  box-shadow: none;
+  color: #07110f;
+  font-weight: 650;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 22px rgba(99, 208, 184, 0.12);
 }
 
 .button-primary:hover {
-  background: #e0bc82;
-  border-color: #e0bc82;
-  color: #171411;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #07110f;
 }
 
 .button-ghost {
@@ -267,7 +287,10 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-panel);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 180px),
+    var(--bg-panel);
+  box-shadow: var(--shadow-lg);
 }
 
 .sidebar-panel,
@@ -281,6 +304,7 @@ textarea {
 .sidebar-panel {
   padding: 10px 10px 8px;
   border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 88%, black 12%);
 }
 
 .detail-panel {
@@ -296,6 +320,7 @@ textarea {
   display: grid;
   align-content: start;
   gap: 10px;
+  background: color-mix(in srgb, var(--bg-panel) 96%, white 2%);
 }
 
 .panel-header,
@@ -306,7 +331,7 @@ textarea {
   gap: 12px;
   min-width: 0;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 
 .panel-header > *,
@@ -323,7 +348,7 @@ textarea {
 .panel-meta,
 .detail-meta {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -332,6 +357,7 @@ textarea {
   padding: 10px 12px;
   border-radius: 6px;
   border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -382,7 +408,7 @@ textarea {
   padding: 0 9px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-control);
+  background: color-mix(in srgb, var(--bg-control) 86%, black 14%);
   color: var(--text-primary);
   font-size: 12px;
 }
@@ -412,18 +438,19 @@ textarea {
   min-height: 28px;
   padding: 1px 4px 1px calc(6px + var(--depth) * 12px);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
 .tree-row:hover {
-  background: color-mix(in srgb, var(--bg-muted) 86%, transparent);
+  background: color-mix(in srgb, var(--bg-muted) 88%, var(--accent-soft));
 }
 
 .tree-row.is-selected {
-  background: color-mix(in srgb, var(--bg-muted) 92%, white 2%);
-  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent-soft) 54%, var(--bg-muted));
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .tree-row.is-selected .tree-title {
@@ -435,7 +462,8 @@ textarea {
 }
 
 .tree-row.is-filter-match {
-  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 38%, transparent);
 }
 
 .tree-row.is-filtered .tree-grip {
@@ -516,8 +544,8 @@ textarea {
 .icon-button:hover,
 .tree-grip:hover,
 .tree-toggle:hover {
-  background: color-mix(in srgb, var(--bg-muted) 88%, transparent);
-  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--bg-muted));
+  color: var(--accent-strong);
 }
 
 .tree-end-drop {
@@ -547,8 +575,18 @@ textarea {
   padding: 0 10px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-control);
+  background: color-mix(in srgb, var(--bg-control) 88%, black 12%);
   color: var(--text-primary);
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.detail-input:focus,
+.detail-url-input:focus,
+.composer-input:focus,
+.outline-search-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--bg-control) 76%, white 5%);
+  box-shadow: 0 0 0 3px rgba(99, 208, 184, 0.08);
 }
 
 .composer-title-input {
@@ -561,8 +599,8 @@ textarea {
 .detail-title-input {
   max-width: 560px;
   font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 27px;
+  font-weight: 720;
   min-height: 38px;
   padding-inline: 0;
   border: none;
@@ -572,7 +610,8 @@ textarea {
 }
 
 .detail-title-input:focus {
-  border-bottom-color: var(--border-strong);
+  border-bottom-color: var(--accent);
+  box-shadow: none;
 }
 
 .detail-url-input {
@@ -606,8 +645,9 @@ textarea {
   gap: 0;
   min-width: 0;
   max-width: 100%;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--bg-panel) 88%, black 5%);
 }
 
 .detail-row {
@@ -621,7 +661,7 @@ textarea {
   border-radius: 0;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
 .detail-row:last-child {
@@ -629,7 +669,7 @@ textarea {
 }
 
 .detail-row:hover {
-  background: color-mix(in srgb, var(--bg-muted) 82%, transparent);
+  background: color-mix(in srgb, var(--bg-muted) 84%, var(--accent-soft));
 }
 
 .detail-row > * {
@@ -637,11 +677,11 @@ textarea {
 }
 
 .detail-row.is-random-highlighted {
-  background: color-mix(in srgb, var(--accent-soft) 72%, var(--bg-muted));
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--bg-muted));
 }
 
 .detail-row.is-random-picked {
-  background: color-mix(in srgb, var(--accent-soft) 64%, var(--bg-muted));
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--bg-muted));
   animation: random-row-picked 900ms ease-out;
   box-shadow:
     inset 3px 0 0 var(--accent),
@@ -703,7 +743,7 @@ textarea {
 
 .weight-value {
   min-width: 22px;
-  color: var(--text-secondary);
+  color: var(--accent-strong);
   font-family: var(--font-mono);
   font-size: 11px;
   text-align: center;
@@ -736,7 +776,7 @@ textarea {
 }
 
 .sortable-chosen {
-  background: color-mix(in srgb, var(--bg-muted) 90%, white 2%);
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--bg-muted));
 }
 
 .empty-state,
@@ -747,6 +787,7 @@ textarea {
   place-items: center;
   text-align: center;
   color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-panel) 88%, black 5%);
 }
 
 .empty-state h2,
@@ -869,10 +910,10 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-control);
+  background: color-mix(in srgb, var(--bg-control) 88%, black 12%);
   color: var(--text-primary);
   font: inherit;
-  box-shadow: inset 0 -1px 0 rgba(244, 236, 222, 0.08);
+  box-shadow: inset 0 -1px 0 rgba(218, 235, 226, 0.08);
 }
 
 @media (max-width: 980px) {
@@ -923,7 +964,7 @@ textarea {
     width: 100%;
     padding: 0;
     border: 0;
-    background: rgba(7, 10, 16, 0.44);
+    background: rgba(5, 9, 8, 0.55);
     cursor: pointer;
     opacity: 0;
     pointer-events: none;
@@ -944,7 +985,7 @@ textarea {
     border-bottom: none;
     border-radius: 8px 8px 0 0;
     background: var(--bg-panel-solid);
-    box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.34);
+    box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.42);
     opacity: 0;
     pointer-events: none;
     transform: translateY(calc(100% + 1px));
